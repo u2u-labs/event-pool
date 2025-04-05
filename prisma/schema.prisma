@@ -1,0 +1,49 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator db {
+  provider = "prisma-client-go"
+}
+
+model Contract {
+  id            String      @id @default(uuid())
+  chainId       Int
+  address       String
+  eventSignature String
+  startBlock    Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  eventLogs     EventLog[]
+  subscriptions Subscription[]
+
+  @@unique([chainId, address, eventSignature])
+}
+
+model EventLog {
+  id            String    @id @default(uuid())
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id])
+  blockNumber   Int
+  txHash        String
+  logIndex      Int
+  data          String
+  createdAt     DateTime  @default(now())
+
+  @@index([contractId, blockNumber])
+  @@index([txHash])
+}
+
+model Subscription {
+  id            String    @id @default(uuid())
+  contractId    String
+  contract      Contract  @relation(fields: [contractId], references: [id])
+  clientId      String
+  createdAt     DateTime  @default(now())
+  lastPing      DateTime  @default(now())
+  isActive      Boolean   @default(true)
+
+  @@unique([contractId, clientId])
+  @@index([clientId])
+} 

@@ -1,0 +1,30 @@
+server:
+  port: 8080
+  host: "0.0.0.0"
+
+database:
+  url: "postgresql://user:password@localhost:5433/event_pool?schema=public"
+
+redis:
+  addr: "localhost:6379"
+  password: ""
+  db: 0
+
+ethereum:
+  chains:
+    2484:
+      rpc_url: "https://rpc-nebulas-testnet.u2u.xyz"
+      block_time: 5 # seconds
+    39:
+      rpc_url: "https://rpc-mainnet.u2u.xyz"
+      block_time: 1 # seconds
+
+websocket:
+  ping_interval: 30 # seconds
+  pong_wait: 60 # seconds
+  write_wait: 10 # seconds
+  max_message_size: 512 # bytes
+
+asynq:
+  redis_addr: "localhost:6379"
+  concurrency: 10 
