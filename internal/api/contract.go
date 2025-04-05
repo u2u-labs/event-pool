@@ -84,6 +84,7 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 		db.Contract.Address.Set(strings.ToLower(req.ContractAddr)),
 		db.Contract.EventSignature.Set(eventSig),
 		db.Contract.StartBlock.Set(req.StartBlock),
+		db.Contract.EventABI.Set(req.EventABI),
 	).Exec(r.Context())
 
 	if err != nil {
