@@ -16,26 +16,14 @@ var rootCmd = &cobra.Command{
 on supported L1 chains, stores them, and pushes them to subscribing clients in real-time.`,
 }
 
-// Define the commands in main.go
 var serveCmd = &cobra.Command{
 	Use:   "serve",
 	Short: "Start the event pool service",
 	RunE:  cmd.RunServe,
 }
 
-var backfillCmd = &cobra.Command{
-	Use:   "backfill",
-	Short: "Backfill historical events for a contract",
-	RunE:  cmd.RunBackfill,
-}
-
 func init() {
-	// Set up flags for backfill command
-	cmd.SetupBackfillFlags(backfillCmd)
-
-	// Add commands here
 	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(backfillCmd)
 }
 
 func main() {

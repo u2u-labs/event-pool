@@ -8,43 +8,46 @@ generator db {
 }
 
 model Contract {
-  id            String      @id @default(uuid())
-  chainId       Int
-  address       String
+  id             String         @id @default(uuid())
+  chainId        Int
+  eventName      String
+  address        String
   eventSignature String
-  startBlock    Int
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
-  eventLogs     EventLog[]
-  eventABI      String
-  subscriptions Subscription[]
+  startBlock     Int
+  eventABI       String
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  eventLogs      EventLog[]
+  subscriptions  Subscription[]
 
   @@unique([chainId, address, eventSignature])
+  @@unique([eventName, address])
+  @@index([eventName, address])
 }
 
 model EventLog {
-  id            String    @id @default(uuid())
-  contractId    String
-  contract      Contract  @relation(fields: [contractId], references: [id])
-  blockNumber   Int
-  txHash        String
-  logIndex      Int
-  data          String
-  createdAt     DateTime  @default(now())
+  id          String   @id @default(uuid())
+  contractId  String
+  contract    Contract @relation(fields: [contractId], references: [id])
+  blockNumber Int
+  txHash      String
+  logIndex    Int
+  data        String
+  createdAt   DateTime @default(now())
 
   @@index([contractId, blockNumber])
   @@index([txHash])
 }
 
 model Subscription {
-  id            String    @id @default(uuid())
-  contractId    String
-  contract      Contract  @relation(fields: [contractId], references: [id])
-  clientId      String
-  createdAt     DateTime  @default(now())
-  lastPing      DateTime  @default(now())
-  isActive      Boolean   @default(true)
+  id         String   @id @default(uuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id])
+  clientId   String
+  createdAt  DateTime @default(now())
+  lastPing   DateTime @default(now())
+  isActive   Boolean  @default(true)
 
   @@unique([contractId, clientId])
   @@index([clientId])
-} 
+}

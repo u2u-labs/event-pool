@@ -10,8 +10,10 @@ import (
 	"event-pool/internal/api"
 	"event-pool/internal/config"
 	"event-pool/internal/db"
+	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
+	"event-pool/pkg/websocket"
 
 	"github.com/spf13/cobra"
 )
@@ -41,8 +43,20 @@ func RunServe(cmd *cobra.Command, args []string) error {
 		ethClients[chainID] = client
 	}
 
+	// Initialize WebSocket server
+	wsConfig := &websocket.Config{
+		PingInterval:   30,
+		PongWait:       60,
+		WriteWait:      10,
+		MaxMessageSize: 512,
+	}
+	wsServer := websocket.NewServer(wsConfig)
+
+	// Initialize monitor
+	mon := monitor.NewMonitor(ethClients, dbClient, wsServer)
+
 	// Initialize worker
-	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient)
+	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, mon)
 	go func() {
 		if err := worker.Start(); err != nil {
 			log.Printf("Worker error: %v", err)

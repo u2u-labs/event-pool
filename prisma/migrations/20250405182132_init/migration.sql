@@ -2,9 +2,11 @@
 CREATE TABLE "Contract" (
     "id" TEXT NOT NULL,
     "chainId" INTEGER NOT NULL,
+    "eventName" TEXT NOT NULL,
     "address" TEXT NOT NULL,
     "eventSignature" TEXT NOT NULL,
     "startBlock" INTEGER NOT NULL,
+    "eventABI" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -37,7 +39,13 @@ CREATE TABLE "Subscription" (
 );
 
 -- CreateIndex
+CREATE INDEX "Contract_eventName_address_idx" ON "Contract"("eventName", "address");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Contract_chainId_address_eventSignature_key" ON "Contract"("chainId", "address", "eventSignature");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Contract_eventName_address_key" ON "Contract"("eventName", "address");
 
 -- CreateIndex
 CREATE INDEX "EventLog_contractId_blockNumber_idx" ON "EventLog"("contractId", "blockNumber");

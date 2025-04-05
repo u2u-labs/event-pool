@@ -3,7 +3,7 @@ server:
   host: "0.0.0.0"
 
 database:
-  url: "postgresql://user:password@localhost:5433/event_pool?schema=public"
+  url: "postgresql://user:password@localhost:5433/event_pool_1?schema=public"
 
 redis:
   addr: "localhost:6379"

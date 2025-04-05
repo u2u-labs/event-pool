@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,7 +53,27 @@ func NewServer(config *Config) *Server {
 func (s *Server) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	// Parse URL path to get chainID, contract, and event
 	// Format: /{chainId}/{contractAddress}/{event}
-	// TODO: Implement path parsing and validation
+	path := strings.TrimPrefix(r.URL.Path, "/")
+	parts := strings.Split(path, "/")
+
+	if len(parts) != 3 {
+		log.Printf("Invalid WebSocket path format: %s", path)
+		http.Error(w, "Invalid WebSocket path format. Expected: /{chainId}/{contractAddress}/{event}", http.StatusBadRequest)
+		return
+	}
+
+	// Parse chain ID
+	chainID, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Printf("Invalid chain ID: %s", parts[0])
+		http.Error(w, "Invalid chain ID", http.StatusBadRequest)
+		return
+	}
+
+	contractAddr := parts[1]
+	eventSig := parts[2]
+
+	log.Printf("WebSocket connection request: ChainID=%d, Contract=%s, Event=%s", chainID, contractAddr, eventSig)
 
 	conn, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -61,9 +82,12 @@ func (s *Server) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	client := &Client{
-		server: s,
-		conn:   conn,
-		send:   make(chan []byte, 256),
+		server:   s,
+		conn:     conn,
+		send:     make(chan []byte, 256),
+		chainID:  chainID,
+		contract: contractAddr,
+		event:    eventSig,
 	}
 
 	// Register client
@@ -71,6 +95,8 @@ func (s *Server) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	clientID := fmt.Sprintf("%d-%s-%s", client.chainID, client.contract, client.event)
 	s.clients[clientID] = client
 	s.mu.Unlock()
+
+	log.Printf("WebSocket client connected: %s", clientID)
 
 	// Start client handlers
 	go client.writePump()
@@ -80,9 +106,11 @@ func (s *Server) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 func (c *Client) readPump() {
 	defer func() {
 		c.server.mu.Lock()
-		delete(c.server.clients, fmt.Sprintf("%d-%s-%s", c.chainID, c.contract, c.event))
+		clientID := fmt.Sprintf("%d-%s-%s", c.chainID, c.contract, c.event)
+		delete(c.server.clients, clientID)
 		c.server.mu.Unlock()
 		c.conn.Close()
+		log.Printf("WebSocket client disconnected: %s", clientID)
 	}()
 
 	c.conn.SetReadLimit(c.server.config.MaxMessageSize)
@@ -96,7 +124,7 @@ func (c *Client) readPump() {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+				log.Printf("WebSocket error: %v", err)
 			}
 			break
 		}
@@ -147,19 +175,21 @@ func (s *Server) BroadcastEvent(chainID int, contract, event string, data interf
 	defer s.mu.RUnlock()
 
 	clientID := fmt.Sprintf("%d-%s-%s", chainID, contract, event)
+
 	if client, ok := s.clients[clientID]; ok {
 		select {
 		case client.send <- message:
+			log.Printf("Sent event to client %s", clientID)
 		default:
-			// Channel is full, client might be slow
 			log.Printf("Client %s is slow, message dropped", clientID)
 		}
+	} else {
+		log.Printf("No clients found for %s", clientID)
 	}
 
 	return nil
 }
 
-// IsWebSocketUpgrade checks if the request is a WebSocket upgrade request
 func IsWebSocketUpgrade(r *http.Request) bool {
 	return strings.ToLower(r.Header.Get("Upgrade")) == "websocket" &&
 		strings.Contains(strings.ToLower(r.Header.Get("Connection")), "upgrade")

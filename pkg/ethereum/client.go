@@ -166,3 +166,8 @@ func (c *Client) SubscribeToLogs(ctx context.Context, contractAddress common.Add
 func (c *Client) RegisterEventABI(eventSignature string, eventABI string) error {
 	return c.decoder.RegisterEvent(eventSignature, eventABI)
 }
+
+// GetDecoder returns the event decoder
+func (c *Client) GetDecoder() *EventDecoder {
+	return c.decoder
+}

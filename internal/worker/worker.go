@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"event-pool/internal/listener"
+	"event-pool/internal/monitor"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
 
@@ -33,9 +34,10 @@ type Worker struct {
 	redisAddr  string
 	db         *db.PrismaClient
 	decoder    *ethereum.EventDecoder
+	monitor    *monitor.Monitor
 }
 
-func NewWorker(redisAddr string, ethClients map[int]*ethereum.Client, db *db.PrismaClient) *Worker {
+func NewWorker(redisAddr string, ethClients map[int]*ethereum.Client, db *db.PrismaClient, monitor *monitor.Monitor) *Worker {
 	srv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: redisAddr},
 		asynq.Config{Concurrency: 10},
@@ -47,6 +49,7 @@ func NewWorker(redisAddr string, ethClients map[int]*ethereum.Client, db *db.Pri
 		redisAddr:  redisAddr,
 		db:         db,
 		decoder:    ethereum.NewEventDecoder(),
+		monitor:    monitor,
 	}
 }
 
@@ -73,7 +76,6 @@ func (w *Worker) handleBackfill(ctx context.Context, t *asynq.Task) error {
 	log.Printf("Backfill task payload: ChainID=%d, ContractAddr=%s, EventSig=%s, StartBlock=%d",
 		p.ChainID, p.ContractAddr, p.EventSig, p.StartBlock)
 
-	// Get the appropriate Ethereum client for the chain
 	client, ok := w.ethClients[p.ChainID]
 	if !ok {
 		log.Printf("No Ethereum client found for chain ID %d", p.ChainID)
@@ -82,7 +84,6 @@ func (w *Worker) handleBackfill(ctx context.Context, t *asynq.Task) error {
 
 	log.Printf("Found Ethereum client for chain ID %d", p.ChainID)
 
-	// Get the contract from the database
 	contract, err := w.db.Contract.FindUnique(
 		db.Contract.ChainIDAddressEventSignature(
 			db.Contract.ChainID.Equals(p.ChainID),
@@ -98,6 +99,30 @@ func (w *Worker) handleBackfill(ctx context.Context, t *asynq.Task) error {
 
 	log.Printf("Found contract in database with ID: %s", contract.ID)
 
+	// Check if the contract is already being backfilled
+	if w.monitor != nil && w.monitor.IsContractBackfilling(contract.ID) {
+		log.Printf("Contract %s is already being backfilled, skipping", contract.ID)
+		return nil
+	}
+
+	// Register the contract with the monitor if it's not already being monitored
+	if w.monitor != nil && !w.monitor.IsContractReadyForMonitoring(contract.ID) {
+		log.Printf("Registering contract %s with monitor", contract.ID)
+		if err := w.monitor.RegisterContract(ctx, contract); err != nil {
+			log.Printf("Error registering contract with monitor: %v", err)
+			// Continue with backfill even if registration fails
+		}
+	}
+
+	// Mark the contract as being backfilled
+	if w.monitor != nil {
+		w.monitor.MarkContractBackfilling(contract.ID)
+		log.Printf("Marked contract %s as being backfilled", contract.ID)
+	}
+
+	// Create a done channel to signal when backfill is complete
+	done := make(chan struct{})
+
 	// Create event listener for backfilling
 	listener := listener.NewEventListener(
 		client,
@@ -109,7 +134,6 @@ func (w *Worker) handleBackfill(ctx context.Context, t *asynq.Task) error {
 
 	log.Printf("Created event listener for contract %s", p.ContractAddr)
 
-	// Start backfilling
 	eventChan := make(chan ethereum.Log, 100)
 	go func() {
 		log.Printf("Starting backfill for contract %s", p.ContractAddr)
@@ -117,65 +141,72 @@ func (w *Worker) handleBackfill(ctx context.Context, t *asynq.Task) error {
 			log.Printf("Error during backfill: %v", err)
 		}
 		log.Printf("Backfill completed for contract %s", p.ContractAddr)
+
+		// Signal that backfill is complete
+		close(done)
+
+		// Mark the contract as having completed backfill
+		if w.monitor != nil {
+			w.monitor.MarkContractBackfillComplete(contract.ID)
+			log.Printf("Marked contract %s as having completed backfill", contract.ID)
+		}
 	}()
 
-	// Process events
+	// Process events from the channel
 	for {
 		select {
 		case <-ctx.Done():
-			log.Printf("Context done, stopping backfill for contract %s", p.ContractAddr)
-			return ctx.Err()
-		case eventLog, ok := <-eventChan:
+			log.Printf("Context cancelled, stopping backfill for contract %s", p.ContractAddr)
+
+			if w.monitor != nil {
+				w.monitor.MarkContractBackfillComplete(contract.ID)
+				log.Printf("Marked contract %s as having completed backfill (context cancelled)", contract.ID)
+			}
+			return nil
+		case <-done:
+			log.Printf("Backfill process completed for contract %s", p.ContractAddr)
+			return nil
+		case event, ok := <-eventChan:
 			if !ok {
 				log.Printf("Event channel closed for contract %s", p.ContractAddr)
 				return nil
 			}
-			log.Printf("Processing event from contract %s: Block=%d, TxHash=%s, Index=%d",
-				p.ContractAddr, eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index)
 
-			// Decode the event data into human-readable JSON
-			// Use the event signature from the log's first topic
-			eventSig := eventLog.Topics[0].Hex()
-			decodedData, err := w.decoder.DecodeEvent(eventSig, eventLog.Data, eventLog.Topics)
+			decodedData, err := client.GetDecoder().DecodeEvent(p.EventSig, event.Data, event.Topics)
 			if err != nil {
 				log.Printf("Error decoding event data: %v", err)
-				// Fall back to hex data if decoding fails
-				decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
+				decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(event.Data))
 			}
 
-			log.Printf("Decoded event data: %s", decodedData)
-
-			// Check if this event log already exists to avoid duplicates
-			existingLog, err := w.db.EventLog.FindFirst(
-				db.EventLog.ContractID.Equals(contract.ID),
-				db.EventLog.BlockNumber.Equals(int(eventLog.BlockNumber)),
-				db.EventLog.TxHash.Equals(strings.ToLower(eventLog.TxHash.Hex())),
-				db.EventLog.LogIndex.Equals(int(eventLog.Index)),
+			existingEvent, err := w.db.EventLog.FindFirst(
+				db.EventLog.BlockNumber.Equals(int(event.BlockNumber)),
+				db.EventLog.TxHash.Equals(strings.ToLower(event.TxHash.Hex())),
+				db.EventLog.LogIndex.Equals(int(event.Index)),
 			).Exec(ctx)
 
-			if err == nil && existingLog != nil {
+			if err == nil && existingEvent != nil {
 				log.Printf("Event log already exists, skipping: Block=%d, TxHash=%s, Index=%d",
-					eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index)
+					event.BlockNumber, event.TxHash.Hex(), event.Index)
 				continue
 			}
 
-			// Create event log with decoded data
 			_, err = w.db.EventLog.CreateOne(
 				db.EventLog.Contract.Link(
-					db.Contract.ID.Equals(strings.ToLower(contract.ID)),
+					db.Contract.ID.Equals(contract.ID),
 				),
-				db.EventLog.BlockNumber.Set(int(eventLog.BlockNumber)),
-				db.EventLog.TxHash.Set(strings.ToLower(eventLog.TxHash.Hex())),
-				db.EventLog.LogIndex.Set(int(eventLog.Index)),
+				db.EventLog.BlockNumber.Set(int(event.BlockNumber)),
+				db.EventLog.TxHash.Set(strings.ToLower(event.TxHash.Hex())),
+				db.EventLog.LogIndex.Set(int(event.Index)),
 				db.EventLog.Data.Set(decodedData),
 			).Exec(ctx)
 
 			if err != nil {
-				log.Printf("Error storing event in database: %v", err)
+				log.Printf("Error storing event: %v", err)
 				continue
 			}
 
-			log.Printf("Stored event in database for contract %s", p.ContractAddr)
+			log.Printf("Stored new event: Block=%d, TxHash=%s",
+				event.BlockNumber, event.TxHash.Hex())
 		}
 	}
 }
@@ -199,4 +230,12 @@ func (w *Worker) EnqueueTask(taskType string, payload []byte) error {
 
 	log.Printf("Successfully enqueued task of type %s", taskType)
 	return nil
+}
+
+// IsContractReadyForMonitoring returns whether a contract is ready for monitoring
+func (w *Worker) IsContractReadyForMonitoring(contractID string) bool {
+	if w.monitor == nil {
+		return false
+	}
+	return w.monitor.IsContractReadyForMonitoring(contractID)
 }

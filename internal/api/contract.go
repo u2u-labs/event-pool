@@ -78,9 +78,16 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("Parsed event signature: %s -> %s", req.EventSignature, eventSig)
 
-	// Create contract in database
+	eventName, err := ethereum.ExtractEventName(req.EventSignature)
+	if err != nil {
+		log.Printf("Error extracting event name: %v", err)
+		http.Error(w, fmt.Sprintf("Invalid event signature format: %v", err), http.StatusBadRequest)
+		return
+	}
+
 	contract, err := h.db.Contract.CreateOne(
 		db.Contract.ChainID.Set(req.ChainID),
+		db.Contract.EventName.Set(eventName),
 		db.Contract.Address.Set(strings.ToLower(req.ContractAddr)),
 		db.Contract.EventSignature.Set(eventSig),
 		db.Contract.StartBlock.Set(req.StartBlock),
@@ -97,7 +104,6 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 
 	// Register the event ABI with the decoder if provided
 	if req.EventABI != "" {
-		// Get the Ethereum client for this chain
 		client, ok := h.ethClients[req.ChainID]
 		if !ok {
 			log.Printf("No Ethereum client found for chain ID %d", req.ChainID)

@@ -34,13 +34,12 @@ func NewEventListener(client *ethereum.Client, chainID int, contract common.Addr
 func (l *EventListener) Start(ctx context.Context, eventChan chan<- ethereum.Log) error {
 	log.Printf("Starting event listener for contract %s on chain %d", l.contract.Hex(), l.chainID)
 
-	// First, backfill historical events
 	if err := l.backfill(ctx, eventChan); err != nil {
 		return fmt.Errorf("failed to backfill events: %w", err)
 	}
 
-	// Then start listening for new events
-	return l.listen(ctx, eventChan)
+	close(eventChan)
+	return nil
 }
 
 func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.Log) error {
@@ -93,28 +92,83 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 	return nil
 }
 
-func (l *EventListener) listen(ctx context.Context, eventChan chan<- ethereum.Log) error {
-	log.Printf("Starting to listen for new events for contract %s", l.contract.Hex())
+// func (l *EventListener) listen(ctx context.Context, eventChan chan<- ethereum.Log) error {
+// 	log.Printf("Starting to listen for new events for contract %s", l.contract.Hex())
 
-	logs, err := l.client.SubscribeToLogs(ctx, l.contract, l.eventSig)
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to logs: %w", err)
-	}
+// 	// Get the latest block number
+// 	latestBlock, err := l.client.GetLatestBlock()
+// 	if err != nil {
+// 		return fmt.Errorf("failed to get latest block: %w", err)
+// 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case eventLog, ok := <-logs:
-			if !ok {
-				return fmt.Errorf("log channel closed")
-			}
-			select {
-			case eventChan <- eventLog:
-				log.Printf("Sent new event from block %d to channel", eventLog.BlockNumber)
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
-	}
-}
+// 	log.Printf("Starting to poll for new events from block %d", latestBlock)
+
+// 	// Use polling instead of WebSocket subscriptions
+// 	pollTicker := time.NewTicker(5 * time.Second)
+// 	defer pollTicker.Stop()
+
+// 	lastProcessedBlock := latestBlock
+
+// 	for {
+// 		select {
+// 		case <-ctx.Done():
+// 			return ctx.Err()
+// 		case <-pollTicker.C:
+// 			// Get the latest block
+// 			currentBlock, err := l.client.GetLatestBlock()
+// 			if err != nil {
+// 				log.Printf("ERROR: Failed to get latest block: %v", err)
+// 				continue
+// 			}
+
+// 			// Check if we have new blocks to process
+// 			if currentBlock > lastProcessedBlock {
+// 				log.Printf("Processing new blocks %d to %d for contract %s",
+// 					lastProcessedBlock+1, currentBlock, l.contract.Hex())
+
+// 				// Process blocks in batches to avoid timeouts
+// 				batchSize := uint64(10)
+// 				for fromBlock := lastProcessedBlock + 1; fromBlock <= currentBlock; fromBlock += batchSize {
+// 					toBlock := fromBlock + batchSize - 1
+// 					if toBlock > currentBlock {
+// 						toBlock = currentBlock
+// 					}
+
+// 					log.Printf("Fetching logs for blocks %d to %d", fromBlock, toBlock)
+
+// 					// Get logs for the block range
+// 					logs, err := l.client.FilterLogs(
+// 						ctx,
+// 						l.contract,
+// 						l.eventSig,
+// 						big.NewInt(int64(fromBlock)),
+// 						big.NewInt(int64(toBlock)),
+// 						l.chainID,
+// 					)
+
+// 					if err != nil {
+// 						log.Printf("ERROR: Failed to fetch logs: %v", err)
+// 						continue
+// 					}
+
+// 					log.Printf("Found %d logs for blocks %d to %d", len(logs), fromBlock, toBlock)
+
+// 					// Process each log
+// 					for _, eventLog := range logs {
+// 						select {
+// 						case eventChan <- eventLog:
+// 							log.Printf("Sent new event from block %d to channel", eventLog.BlockNumber)
+// 						case <-ctx.Done():
+// 							return ctx.Err()
+// 						}
+// 					}
+
+// 					// Update the last processed block
+// 					lastProcessedBlock = toBlock
+// 				}
+// 			} else {
+// 				log.Printf("No new blocks to process. Current: %d, Last: %d", currentBlock, lastProcessedBlock)
+// 			}
+// 		}
+// 	}
+// }
