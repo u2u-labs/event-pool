@@ -119,6 +119,21 @@ func (s *Server) Start() error {
 		}
 	})
 
+	// events query endpoint
+	http.HandleFunc("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		contractHandler.GetEvents(w, r)
+	})
+
+	// Fix the incomplete handler
+	http.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "API endpoint not found", http.StatusNotFound)
+	})
+
 	// Add monitor status endpoint
 	http.HandleFunc("/api/v1/monitor/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

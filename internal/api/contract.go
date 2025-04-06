@@ -43,7 +43,6 @@ type RegisterContractResponse struct {
 }
 
 func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Request) {
-	// Parse request body
 	var req RegisterContractRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Printf("Error decoding request body: %v", err)
@@ -146,18 +145,15 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("Successfully enqueued backfill task for contract %s", req.ContractAddr)
 
-	// Return success response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RegisterContractResponse{ID: contract.ID})
 }
 
 func (h *ContractHandler) GetContracts(w http.ResponseWriter, r *http.Request) {
-	// Get query parameters
 	chainIDStr := r.URL.Query().Get("chainId")
 	address := r.URL.Query().Get("address")
 	eventSig := r.URL.Query().Get("eventSignature")
 
-	// Build filters
 	var filters []db.ContractWhereParam
 
 	if chainIDStr != "" {
@@ -177,7 +173,6 @@ func (h *ContractHandler) GetContracts(w http.ResponseWriter, r *http.Request) {
 		filters = append(filters, db.Contract.EventSignature.Equals(eventSig))
 	}
 
-	// Execute query with filters
 	contracts, err := h.db.Contract.FindMany(
 		filters...,
 	).Exec(r.Context())
@@ -186,7 +181,81 @@ func (h *ContractHandler) GetContracts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return response
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(contracts)
+}
+
+func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
+	contractAddress := r.URL.Query().Get("contractAddress")
+	txHash := r.URL.Query().Get("txHash")
+	pageStr := r.URL.Query().Get("take")
+	limitStr := r.URL.Query().Get("skip")
+
+	if contractAddress == "" {
+		http.Error(w, "contractAddress is required", http.StatusBadRequest)
+		return
+	}
+
+	take := 1
+	skip := 10
+
+	if pageStr != "" {
+		if t, err := strconv.Atoi(pageStr); err == nil && t > 0 {
+			take = t
+		} else {
+			http.Error(w, "invalid page parameter", http.StatusBadRequest)
+			return
+		}
+	}
+
+	if limitStr != "" {
+		if s, err := strconv.Atoi(limitStr); err == nil && s > 0 {
+			skip = s
+		} else {
+			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			return
+		}
+	}
+
+	contract, err := h.db.Contract.FindFirst(
+		db.Contract.Address.Equals(strings.ToLower(contractAddress)),
+	).Exec(r.Context())
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to find contract: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if contract == nil {
+		http.Error(w, "Contract not found", http.StatusNotFound)
+		return
+	}
+
+	var filters []db.EventLogWhereParam
+
+	filters = append(filters, db.EventLog.ContractID.Equals(contract.ID))
+
+	if txHash != "" {
+		filters = append(filters, db.EventLog.TxHash.Equals(strings.ToLower(txHash)))
+	}
+
+	events, err := h.db.EventLog.FindMany(
+		filters...,
+	).OrderBy(db.EventLog.BlockNumber.Order(db.SortOrderDesc)).Skip(skip).Take(take).Exec(r.Context())
+
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to query events: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"data": events,
+		"pagination": map[string]interface{}{
+			"take": take,
+			"skip": skip,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
