@@ -2,17 +2,18 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/viper"
 )
 
 type Config struct {
-	Server    ServerConfig    `mapstructure:"server"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Redis     RedisConfig     `mapstructure:"redis"`
-	Ethereum  EthereumConfig  `mapstructure:"ethereum"`
-	WebSocket WebSocketConfig `mapstructure:"websocket"`
-	Asynq     AsynqConfig     `mapstructure:"asynq"`
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Redis    RedisConfig    `mapstructure:"redis"`
+	Ethereum EthereumConfig `mapstructure:"ethereum"`
+	MQTT     MQTTConfig     `mapstructure:"mqtt"`
+	Asynq    AsynqConfig    `mapstructure:"asynq"`
 }
 
 type ServerConfig struct {
@@ -39,11 +40,15 @@ type EthereumConfig struct {
 	Chains map[int]ChainConfig `mapstructure:"chains"`
 }
 
-type WebSocketConfig struct {
-	PingInterval   int `mapstructure:"ping_interval"`
-	PongWait       int `mapstructure:"pong_wait"`
-	WriteWait      int `mapstructure:"write_wait"`
-	MaxMessageSize int `mapstructure:"max_message_size"`
+type MQTTConfig struct {
+	BrokerURL      string        `mapstructure:"broker_url"`
+	ClientID       string        `mapstructure:"client_id"`
+	Username       string        `mapstructure:"username"`
+	Password       string        `mapstructure:"password"`
+	QoS            byte          `mapstructure:"qos"`
+	CleanSession   bool          `mapstructure:"clean_session"`
+	PingInterval   time.Duration `mapstructure:"ping_interval"`
+	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
 }
 
 type AsynqConfig struct {

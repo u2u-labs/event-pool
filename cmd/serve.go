@@ -13,7 +13,7 @@ import (
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
-	"event-pool/pkg/websocket"
+	"event-pool/pkg/mqtt"
 
 	"github.com/spf13/cobra"
 )
@@ -43,17 +43,25 @@ func RunServe(cmd *cobra.Command, args []string) error {
 		ethClients[chainID] = client
 	}
 
-	// Initialize WebSocket server
-	wsConfig := &websocket.Config{
-		PingInterval:   30,
-		PongWait:       60,
-		WriteWait:      10,
-		MaxMessageSize: 512,
+	// Initialize MQTT server
+	mqttConfig := &mqtt.Config{
+		BrokerURL:      cfg.MQTT.BrokerURL,
+		ClientID:       cfg.MQTT.ClientID,
+		Username:       cfg.MQTT.Username,
+		Password:       cfg.MQTT.Password,
+		QoS:            cfg.MQTT.QoS,
+		CleanSession:   cfg.MQTT.CleanSession,
+		PingInterval:   cfg.MQTT.PingInterval,
+		ConnectTimeout: cfg.MQTT.ConnectTimeout,
 	}
-	wsServer := websocket.NewServer(wsConfig)
+	mqttServer, err := mqtt.NewServer(mqttConfig)
+	if err != nil {
+		return fmt.Errorf("failed to initialize MQTT server: %w", err)
+	}
+	defer mqttServer.Close()
 
 	// Initialize monitor
-	mon := monitor.NewMonitor(ethClients, dbClient, wsServer)
+	mon := monitor.NewMonitor(ethClients, dbClient, mqttServer)
 
 	// Initialize worker
 	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, mon)
@@ -79,9 +87,6 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	log.Println("Shutting down...")
 
 	// Graceful shutdown
-	if err := worker.Shutdown(); err != nil {
-		log.Printf("Error shutting down worker: %v", err)
-	}
-
+	server.Stop()
 	return nil
 }

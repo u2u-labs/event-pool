@@ -19,11 +19,15 @@ ethereum:
       rpc_url: "https://rpc-mainnet.u2u.xyz"
       block_time: 1 # seconds
 
-websocket:
-  ping_interval: 30 # seconds
-  pong_wait: 60 # seconds
-  write_wait: 10 # seconds
-  max_message_size: 512 # bytes
+mqtt:
+  broker_url: "tcp://localhost:1883"
+  client_id: "event-pool-server"
+  username: ""
+  password: ""
+  qos: 1
+  clean_session: true
+  ping_interval: 30s
+  connect_timeout: 10s
 
 asynq:
   redis_addr: "localhost:6379"

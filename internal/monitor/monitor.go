@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"event-pool/pkg/ethereum"
-	"event-pool/pkg/websocket"
+	"event-pool/pkg/mqtt"
 	"event-pool/prisma/db"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -19,7 +19,7 @@ import (
 type Monitor struct {
 	ethClients         map[int]*ethereum.Client
 	db                 *db.PrismaClient
-	wsServer           *websocket.Server
+	mqttServer         *mqtt.Server
 	mu                 sync.RWMutex
 	monitors           map[string]context.CancelFunc
 	running            bool
@@ -28,11 +28,11 @@ type Monitor struct {
 	readyForMonitoring map[string]bool
 }
 
-func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, wsServer *websocket.Server) *Monitor {
+func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, mqttServer *mqtt.Server) *Monitor {
 	return &Monitor{
 		ethClients:         ethClients,
 		db:                 db,
-		wsServer:           wsServer,
+		mqttServer:         mqttServer,
 		monitors:           make(map[string]context.CancelFunc),
 		lastBlocks:         make(map[int]uint64),
 		backfilling:        make(map[string]bool),
@@ -157,6 +157,7 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 	var chainID int64
 	var address string
 	var eventSignature string
+	var eventABI string
 	var id string
 	contractValue := reflect.ValueOf(contract)
 
@@ -164,11 +165,13 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 		chainID = contractValue.Elem().FieldByName("ChainID").Int()
 		address = contractValue.Elem().FieldByName("Address").String()
 		eventSignature = contractValue.Elem().FieldByName("EventSignature").String()
+		eventABI = contractValue.Elem().FieldByName("EventABI").String()
 		id = contractValue.Elem().FieldByName("ID").String()
 	} else {
 		chainID = contractValue.FieldByName("ChainID").Int()
 		address = contractValue.FieldByName("Address").String()
 		eventSignature = contractValue.FieldByName("EventSignature").String()
+		eventABI = contractValue.FieldByName("EventABI").String()
 		id = contractValue.FieldByName("ID").String()
 	}
 
@@ -182,6 +185,16 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 	if !ok {
 		fmt.Printf("ERROR: No Ethereum client found for chain ID %d\n", chainID)
 		return
+	}
+
+	// Register the event ABI with the decoder if available
+	if eventABI != "" {
+		err := client.RegisterEventABI(eventSignature, eventABI)
+		if err != nil {
+			fmt.Printf("WARNING: Failed to register event ABI: %v\n", err)
+		} else {
+			fmt.Printf("Successfully registered event ABI for signature %s\n", eventSignature)
+		}
 	}
 
 	latestBlock, err := client.GetLatestBlock()
@@ -230,12 +243,16 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 				continue
 			}
 
-			if currentBlock > lastProcessedBlock {
-				fmt.Printf("\n=== Processing New Blocks ===\n")
-				fmt.Printf("Contract: %s\n", address)
-				fmt.Printf("Processing blocks %d to %d\n", lastProcessedBlock+1, currentBlock)
+			m.mu.Lock()
+			lastProcessedBlock := m.lastBlocks[int(chainID)]
+			m.mu.Unlock()
 
-				batchSize := uint64(10)
+			if currentBlock > lastProcessedBlock {
+				// fmt.Printf("\n=== Processing New Blocks ===\n")
+				// fmt.Printf("Contract: %s\n", address)
+				// fmt.Printf("Processing blocks %d to %d\n", lastProcessedBlock+1, currentBlock)
+
+				batchSize := uint64(5)
 				for fromBlock := lastProcessedBlock + 1; fromBlock <= currentBlock; fromBlock += batchSize {
 					toBlock := fromBlock + batchSize - 1
 					if toBlock > currentBlock {
@@ -268,61 +285,57 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 							decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
 						}
 
-						existingEvent, err := m.db.EventLog.FindFirst(
-							db.EventLog.BlockNumber.Equals(int(eventLog.BlockNumber)),
-							db.EventLog.TxHash.Equals(strings.ToLower(eventLog.TxHash.Hex())),
-							db.EventLog.LogIndex.Equals(int(eventLog.Index)),
-						).Exec(ctx)
-
-						if err == nil && existingEvent != nil {
-							fmt.Printf("Event log already exists, skipping: Block=%d, TxHash=%s, Index=%d\n",
-								eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index)
-							continue
-						}
-
-						_, err = m.db.EventLog.CreateOne(
-							db.EventLog.Contract.Link(
-								db.Contract.ID.Equals(id),
-							),
-							db.EventLog.BlockNumber.Set(int(eventLog.BlockNumber)),
-							db.EventLog.TxHash.Set(strings.ToLower(eventLog.TxHash.Hex())),
-							db.EventLog.LogIndex.Set(int(eventLog.Index)),
-							db.EventLog.Data.Set(decodedData),
-						).Exec(ctx)
-
+						err = m.processEvent(ctx, int(chainID), address, eventSignature, eventLog, decodedData)
 						if err != nil {
-							fmt.Printf("ERROR: Failed to store event: %v\n", err)
+							fmt.Printf("ERROR: Failed to process event: %v\n", err)
 							continue
 						}
-
-						fmt.Printf("Stored new event: Block=%d, TxHash=%s\n",
-							eventLog.BlockNumber, eventLog.TxHash.Hex())
-
-						m.wsServer.BroadcastEvent(
-							int(chainID),
-							address,
-							eventSignature,
-							map[string]interface{}{
-								"blockNumber": eventLog.BlockNumber,
-								"txHash":      eventLog.TxHash.Hex(),
-								"data":        decodedData,
-							},
-						)
 					}
 
+					// Update the last processed block after processing each batch
 					m.mu.Lock()
 					m.lastBlocks[int(chainID)] = toBlock
 					lastProcessedBlock = toBlock
 					m.mu.Unlock()
 
 					fmt.Printf("Updated last processed block to %d\n", lastProcessedBlock)
+					fmt.Printf("=== Finished Processing Blocks ===\n\n")
 				}
-				fmt.Printf("=== Finished Processing Blocks ===\n\n")
 			} else {
 				fmt.Printf("No new blocks to process. Current: %d, Last: %d\n", currentBlock, lastProcessedBlock)
 			}
 		}
 	}
+}
+
+func (m *Monitor) processEvent(ctx context.Context, chainID int, address string, eventSignature string, eventLog ethereum.Log, decodedData interface{}) error {
+	// Store event in database
+	contract, err := m.db.Contract.FindFirst(
+		db.Contract.ChainID.Equals(chainID),
+		db.Contract.Address.Equals(strings.ToLower(address)),
+		db.Contract.EventSignature.Equals(eventSignature),
+	).Exec(ctx)
+
+	if err != nil {
+		return fmt.Errorf("failed to find contract: %w", err)
+	}
+	// Broadcast event via MQTT
+	err = m.mqttServer.BroadcastEvent(
+		chainID,
+		address,
+		contract.EventName,
+		map[string]interface{}{
+			"blockNumber": eventLog.BlockNumber,
+			"txHash":      eventLog.TxHash.Hex(),
+			"data":        decodedData,
+		},
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to broadcast event: %w", err)
+	}
+
+	return nil
 }
 
 func (m *Monitor) IsRunning() bool {

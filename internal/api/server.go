@@ -2,18 +2,17 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
-	"time"
 
 	"event-pool/internal/config"
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
-	"event-pool/pkg/websocket"
+	"event-pool/pkg/mqtt"
 	"event-pool/prisma/db"
 )
 
@@ -21,7 +20,7 @@ type Server struct {
 	config     *config.Config
 	db         *db.PrismaClient
 	worker     *worker.Worker
-	wsServer   *websocket.Server
+	mqttServer *mqtt.Server
 	ethClients map[int]*ethereum.Client
 	monitor    *monitor.Monitor
 }
@@ -48,23 +47,31 @@ func (s *Server) GetActiveContracts(ctx context.Context) ([]db.ContractModel, er
 }
 
 func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client) *Server {
-	// Create WebSocket server
-	wsConfig := &websocket.Config{
-		PingInterval:   30 * time.Second,
-		PongWait:       60 * time.Second,
-		WriteWait:      10 * time.Second,
-		MaxMessageSize: 512 * 1024, // 512KB
+	// Create MQTT server
+	mqttConfig := &mqtt.Config{
+		BrokerURL:      config.MQTT.BrokerURL,
+		ClientID:       config.MQTT.ClientID,
+		Username:       config.MQTT.Username,
+		Password:       config.MQTT.Password,
+		QoS:            config.MQTT.QoS,
+		CleanSession:   config.MQTT.CleanSession,
+		PingInterval:   config.MQTT.PingInterval,
+		ConnectTimeout: config.MQTT.ConnectTimeout,
 	}
-	wsServer := websocket.NewServer(wsConfig)
+	mqttServer, err := mqtt.NewServer(mqttConfig)
+	if err != nil {
+		log.Printf("Failed to initialize MQTT server: %v", err)
+		return nil
+	}
 
 	// Create monitor
-	mon := monitor.NewMonitor(ethClients, db, wsServer)
+	mon := monitor.NewMonitor(ethClients, db, mqttServer)
 
 	return &Server{
 		config:     config,
 		db:         db,
 		worker:     worker,
-		wsServer:   wsServer,
+		mqttServer: mqttServer,
 		ethClients: ethClients,
 		monitor:    mon,
 	}
@@ -83,6 +90,10 @@ func (s *Server) Stop() {
 	if s.monitor != nil {
 		s.monitor.Stop()
 		log.Println("Monitor stopped")
+	}
+	if s.mqttServer != nil {
+		s.mqttServer.Close()
+		log.Println("MQTT server stopped")
 	}
 }
 
@@ -119,54 +130,45 @@ func (s *Server) Start() error {
 			status.IsRunning, status.ActiveContracts, status.LastBlock)
 	})
 
-	// WebSocket endpoint for event subscriptions
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Check if it's a WebSocket request
-		if websocket.IsWebSocketUpgrade(r) {
-			// Parse path: /{chainId}/{contractAddress}/{eventId}
-			path := strings.TrimPrefix(r.URL.Path, "/")
-			parts := strings.Split(path, "/")
-
-			if len(parts) != 3 {
-				http.Error(w, "Invalid WebSocket path format. Expected: /{chainId}/{contractAddress}/{eventId}", http.StatusBadRequest)
-				return
-			}
-
-			// Validate the contract exists in the database
-			chainID, err := strconv.Atoi(parts[0])
-			if err != nil {
-				http.Error(w, "Invalid chain ID", http.StatusBadRequest)
-				return
-			}
-
-			contractAddr := parts[1]
-			eventID := parts[2]
-
-			// Check if the contract exists in the database
-			contract, err := s.db.Contract.FindUnique(
-				db.Contract.ID.Equals(eventID),
-			).Exec(context.Background())
-
-			if err != nil {
-				log.Printf("Contract not found with ID: %s", eventID)
-				http.Error(w, "Contract not found", http.StatusNotFound)
-				return
-			}
-
-			// Verify that the contract matches the chain ID and address
-			if contract.ChainID != chainID || strings.ToLower(contract.Address) != strings.ToLower(contractAddr) {
-				log.Printf("Contract mismatch: ChainID=%d, Address=%s, EventID=%s", chainID, contractAddr, eventID)
-				http.Error(w, "Contract mismatch", http.StatusBadRequest)
-				return
-			}
-
-			log.Printf("WebSocket connection for contract: %s", contract.ID)
-			s.wsServer.HandleWebSocket(w, r)
+	// Add MQTT subscription endpoint
+	http.HandleFunc("/api/v1/subscribe", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
-		// Default response for non-WebSocket requests
-		fmt.Fprintf(w, "Event Pool API Server")
+		// Parse request body
+		var req struct {
+			ChainID        int    `json:"chainId"`
+			ContractAddr   string `json:"contractAddress"`
+			EventSignature string `json:"eventSignature"`
+		}
+
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// Validate contract exists
+		_, err := s.db.Contract.FindFirst(
+			db.Contract.ChainID.Equals(req.ChainID),
+			db.Contract.Address.Equals(strings.ToLower(req.ContractAddr)),
+			db.Contract.EventSignature.Equals(req.EventSignature),
+		).Exec(r.Context())
+
+		if err != nil {
+			http.Error(w, "Contract not found", http.StatusNotFound)
+			return
+		}
+
+		// Register the topic for tracking
+		s.mqttServer.RegisterTopic(req.ChainID, req.ContractAddr, req.EventSignature)
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "registered",
+			"topic":  fmt.Sprintf("events/%d/%s/%s", req.ChainID, req.ContractAddr, req.EventSignature),
+		})
 	})
 
 	// Start the server
