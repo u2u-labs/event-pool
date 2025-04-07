@@ -10,6 +10,11 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+var (
+	instance *Server
+	once     sync.Once
+)
+
 type Server struct {
 	config *Config
 	client mqtt.Client
@@ -28,26 +33,42 @@ type Config struct {
 }
 
 func NewServer(config *Config) (*Server, error) {
-	opts := mqtt.NewClientOptions().
-		AddBroker(config.BrokerURL).
-		SetClientID(config.ClientID).
-		SetUsername(config.Username).
-		SetPassword(config.Password).
-		SetCleanSession(config.CleanSession).
-		SetPingTimeout(config.PingInterval).
-		SetConnectTimeout(config.ConnectTimeout).
-		SetAutoReconnect(true).
-		SetMaxReconnectInterval(1 * time.Minute)
+	var initErr error
+	once.Do(func() {
+		opts := mqtt.NewClientOptions().
+			AddBroker(config.BrokerURL).
+			SetClientID(config.ClientID).
+			SetUsername(config.Username).
+			SetPassword(config.Password).
+			SetCleanSession(config.CleanSession).
+			SetPingTimeout(config.PingInterval).
+			SetConnectTimeout(config.ConnectTimeout).
+			SetAutoReconnect(true).
+			SetMaxReconnectInterval(1 * time.Minute).
+			SetConnectionLostHandler(func(client mqtt.Client, err error) {
+				log.Printf("Connection lost: %v", err)
+			}).
+			SetOnConnectHandler(func(client mqtt.Client) {
+				log.Printf("Connected to MQTT broker")
+			})
 
-	client := mqtt.NewClient(opts)
-	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		return nil, fmt.Errorf("failed to connect to MQTT broker: %w", token.Error())
+		client := mqtt.NewClient(opts)
+		if token := client.Connect(); token.Wait() && token.Error() != nil {
+			initErr = fmt.Errorf("failed to connect to MQTT broker: %w", token.Error())
+			return
+		}
+
+		instance = &Server{
+			config: config,
+			client: client,
+		}
+	})
+
+	if initErr != nil {
+		return nil, initErr
 	}
 
-	return &Server{
-		config: config,
-		client: client,
-	}, nil
+	return instance, nil
 }
 
 func (s *Server) Close() {
