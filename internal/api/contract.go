@@ -196,8 +196,8 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	take := 1
-	skip := 10
+	take := 10
+	skip := 0
 
 	if pageStr != "" {
 		if t, err := strconv.Atoi(pageStr); err == nil && t > 0 {
