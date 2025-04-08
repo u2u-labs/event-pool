@@ -9,6 +9,7 @@ RUN if [ ! -f go.mod ]; then go mod init event-pool; fi
 # Install Go dependencies
 RUN go mod tidy
 RUN go get github.com/steebchen/prisma-client-go
+RUN go run github.com/steebchen/prisma-client-go generate
 
 # Build the application
 RUN go build -ldflags -w -o event-pool
