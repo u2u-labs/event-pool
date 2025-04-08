@@ -21,8 +21,8 @@ model Contract {
   subscriptions  Subscription[]
 
   @@unique([chainId, address, eventSignature])
-  @@unique([eventName, address])
-  @@index([eventName, address])
+  @@unique([chainId, eventName, address])
+  @@index([chainId, eventName, address])
 }
 
 model EventLog {

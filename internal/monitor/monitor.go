@@ -328,7 +328,6 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 			"blockNumber": eventLog.BlockNumber,
 			"txHash":      eventLog.TxHash.Hex(),
 			"data":        decodedData,
-			"chainId":     chainID,
 		},
 	)
 

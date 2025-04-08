@@ -187,6 +187,7 @@ func (h *ContractHandler) GetContracts(w http.ResponseWriter, r *http.Request) {
 
 func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	contractAddress := r.URL.Query().Get("contractAddress")
+	chainIdStr := r.URL.Query().Get("chainId")
 	txHash := r.URL.Query().Get("txHash")
 	pageStr := r.URL.Query().Get("take")
 	limitStr := r.URL.Query().Get("skip")
@@ -198,7 +199,16 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	take := 10
 	skip := 0
+	chainId := 39
 
+	if chainIdStr != "" {
+		if c, err := strconv.Atoi(chainIdStr); err == nil {
+			chainId = c
+		} else {
+			http.Error(w, "invalid chainId parameter", http.StatusBadRequest)
+			return
+		}
+	}
 	if pageStr != "" {
 		if t, err := strconv.Atoi(pageStr); err == nil && t > 0 {
 			take = t
@@ -216,8 +226,9 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-
+	fmt.Println("chainId", chainId)
 	contract, err := h.db.Contract.FindFirst(
+		db.Contract.ChainID.Equals(chainId),
 		db.Contract.Address.Equals(strings.ToLower(contractAddress)),
 	).Exec(r.Context())
 
@@ -241,7 +252,7 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.db.EventLog.FindMany(
 		filters...,
-	).OrderBy(db.EventLog.BlockNumber.Order(db.SortOrderDesc)).Skip(skip).Take(take).Exec(r.Context())
+	).With(db.EventLog.Contract.Fetch()).OrderBy(db.EventLog.BlockNumber.Order(db.SortOrderDesc)).Skip(skip).Take(take).Exec(r.Context())
 
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to query events: %v", err), http.StatusInternalServerError)
