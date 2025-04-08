@@ -12,7 +12,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ../postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -26,7 +26,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis_data:/data
+      - ../redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -42,14 +42,20 @@ services:
       - "9001:9001"
     volumes:
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - mqtt_data:/mosquitto/data
-      - mqtt_log:/mosquitto/log
+      - ../mqtt_data:/mosquitto/data
+      - ../mqtt_log:/mosquitto/log
     command: 'mosquitto -c /mosquitto/config/mosquitto.conf'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 300m
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    image: u2ulabs/event-pool:latest
     container_name: event-emitter-api
     restart: always
     depends_on:
@@ -63,9 +69,8 @@ services:
       - ./config.yaml:/app/config.yaml
     extra_hosts:
       - "host.docker.internal:host-gateway"
-
-volumes:
-  postgres_data:
-  redis_data:
-  mqtt_data:
-  mqtt_log:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 300m
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
