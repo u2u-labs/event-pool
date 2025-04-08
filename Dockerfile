@@ -16,12 +16,11 @@ RUN go run github.com/steebchen/prisma-client-go generate
 # Now copy the rest of the application
 COPY . .
 
-# Update dependencies and vendor
+# Update dependencies
 RUN go mod tidy
-RUN go mod vendor
 
 # Build the application
-RUN go build -mod=vendor -ldflags -w -o event-pool
+RUN go build -ldflags -w -o event-pool
 
 FROM golang:1.23-alpine
 RUN apk add ca-certificates curl
@@ -29,6 +28,9 @@ WORKDIR /app
 
 # Copy the entire application from builder
 COPY --from=builder /app /app
+
+# Install Prisma CLI in the final image
+RUN go get github.com/steebchen/prisma-client-go
 
 # Set the entrypoint to run migrations and then start the application
 COPY docker-entrypoint.sh /app/
