@@ -1,19 +1,27 @@
 FROM golang:1.23-alpine AS builder
 RUN apk update && apk add build-base cmake gcc git
 WORKDIR /app
-COPY . .
 
-# Initialize Go module if not exists
-RUN if [ ! -f go.mod ]; then go mod init event-pool; fi
+# Copy only the files needed for dependency resolution first
+COPY go.mod go.sum ./
+COPY prisma ./prisma/
+COPY pkg ./pkg/
+COPY internal ./internal/
 
-# Install Go dependencies
-RUN go mod tidy
-RUN go mod vendor
+# Initialize Go module and install dependencies
+RUN go mod download
 RUN go get github.com/steebchen/prisma-client-go
 RUN go run github.com/steebchen/prisma-client-go generate
 
+# Now copy the rest of the application
+COPY . .
+
+# Update dependencies and vendor
+RUN go mod tidy
+RUN go mod vendor
+
 # Build the application
-RUN go build -ldflags -w -o event-pool
+RUN go build -mod=vendor -ldflags -w -o event-pool
 
 FROM golang:1.23-alpine
 RUN apk add ca-certificates curl
