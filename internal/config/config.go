@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -59,10 +60,12 @@ type AsynqConfig struct {
 var cfg *Config
 
 func Load() (*Config, error) {
+	godotenv.Load()
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
+	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("error reading config file: %w", err)

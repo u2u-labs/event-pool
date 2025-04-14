@@ -2,13 +2,13 @@ package ethereum
 
 import (
 	"context"
-	"event-pool/prisma/db"
 	"fmt"
+	"log"
 	"math/big"
 	"strings"
 	"sync"
 
-	"log"
+	"event-pool/prisma/db"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"

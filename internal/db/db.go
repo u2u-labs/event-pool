@@ -1,9 +1,10 @@
 package db
 
 import (
-	"event-pool/prisma/db"
 	"fmt"
 	"log"
+
+	"event-pool/prisma/db"
 	// prisma "github.com/steebchen/prisma-client-go"
 )
 
