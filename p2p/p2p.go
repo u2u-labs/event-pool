@@ -1,10 +1,12 @@
 package p2p
 
 import (
+	"bufio"
 	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -29,8 +31,9 @@ const (
 	ConnectionTimeout     = time.Second * 10
 	MaxConcurrentRequests = 10
 
-	ContractDiscoveryProtocol = "/contract/discovery/1.0.0"
-	ContractQueryTimeout      = time.Second * 5
+	ContractDiscoveryProtocol   = "/contract/discovery/1.0.0"
+	ContractQueryTimeout        = time.Second * 5
+	NewPeerNotificationProtocol = "/chain/new-peer/1.0.0"
 )
 
 type Executor interface {
@@ -171,6 +174,7 @@ func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e E
 	// Set protocol handler
 	h.SetStreamHandler(ChainProtocol, node.handleStream)
 	h.SetStreamHandler(ContractDiscoveryProtocol, node.handleContractQuery)
+	h.SetStreamHandler(NewPeerNotificationProtocol, node.handleNewPeerNotification)
 
 	// Start advertising presence
 	node.advertise()
@@ -265,6 +269,62 @@ func (n *ChainNode) handleStream(stream network.Stream) {
 
 	// Announce new node join
 	n.announceNewPeer(chainID, remotePeer)
+}
+
+// Handler for new peer notifications
+func (n *ChainNode) handleNewPeerNotification(stream network.Stream) {
+	defer stream.Close()
+
+	remotePeer := stream.Conn().RemotePeer()
+	n.logger.Infof("Received stream from %s", remotePeer.String())
+
+	reader := bufio.NewReader(stream)
+
+	// Read chain ID with timeout
+	chainIDBuf := make([]byte, 8)
+	if _, err := io.ReadFull(reader, chainIDBuf); err != nil {
+		n.logger.Errorf("Failed to read chain ID: %v", err)
+		return
+	}
+	chainID := int64(binary.BigEndian.Uint64(chainIDBuf))
+
+	// Read peer ID with more robust method
+	peerIDLenBuf := make([]byte, 2)
+	if _, err := io.ReadFull(reader, peerIDLenBuf); err != nil {
+		n.logger.Errorf("Failed to read peer ID length: %v", err)
+		return
+	}
+	peerIDLen := binary.BigEndian.Uint16(peerIDLenBuf)
+
+	// Prevent oversized peer ID
+	if peerIDLen > 256 {
+		n.logger.Errorf("Peer ID length too large: %d", peerIDLen)
+		return
+	}
+
+	newPeerIDBytes := make([]byte, peerIDLen)
+	if _, err := io.ReadFull(reader, newPeerIDBytes); err != nil {
+		n.logger.Errorf("Failed to read new peer ID: %v", err)
+		return
+	}
+
+	newPeerID, err := peer.IDFromBytes(newPeerIDBytes)
+	if err != nil {
+		n.logger.Errorf("Invalid peer ID: %v", err)
+		return
+	}
+
+	if err := n.connectToPeer(newPeerID); err != nil {
+		n.logger.Errorf("Failed to connect to new peer %s: %v", newPeerID, err)
+		stream.Write([]byte{0}) // Negative acknowledgment
+		return
+	}
+
+	// Add peer to the chain group
+	n.addPeerToChainGroup(chainID, newPeerID)
+
+	// Send positive acknowledgment
+	stream.Write([]byte{1})
 }
 
 // setupMDNSDiscovery configures mDNS for local peer discovery
@@ -476,7 +536,7 @@ func (n *ChainNode) joinViaExistingPeer(peerInfo peer.AddrInfo, chainID int64) e
 		}
 
 		// Try to connect to the peer
-		err = n.connectToPeer(peerID, chainID)
+		err = n.connectToPeer(peerID)
 		if err != nil {
 			n.logger.Warnf("Failed to connect to peer %s: %v", peerID, err)
 			continue
@@ -494,7 +554,7 @@ func (n *ChainNode) joinViaExistingPeer(peerInfo peer.AddrInfo, chainID int64) e
 	return nil
 }
 
-func (n *ChainNode) connectToPeer(peerID peer.ID, chainID int64) error {
+func (n *ChainNode) connectToPeer(peerID peer.ID) error {
 	peerInfo, err := n.dht.FindPeer(n.ctx, peerID)
 	if err != nil {
 		return fmt.Errorf("could not connect to peer %s through any method", peerID)
@@ -514,7 +574,7 @@ func (n *ChainNode) connectToPeer(peerID peer.ID, chainID int64) error {
 	return nil
 }
 
-// createNewChainGroup initializes a new chain group
+// createNewChainGroup initializes a new chain group in local memory
 func (n *ChainNode) createNewChainGroup(chainID int64) {
 	n.chainGroupsLock.Lock()
 	defer n.chainGroupsLock.Unlock()
@@ -547,7 +607,7 @@ func (n *ChainNode) addPeerToChainGroup(chainID int64, peerID peer.ID) {
 	defer group.peersLock.Unlock()
 
 	group.Peers[peerID] = struct{}{}
-	n.logger.Infof("Added peer %s to chain group %d", peerID, chainID)
+	n.logger.Infow("Added peer to chain group", "host", n.host.ID(), "peer", peerID, "chainId", chainID)
 }
 
 // announceNewPeer broadcasts to all peers in a chain group that a new peer has joined
@@ -562,16 +622,91 @@ func (n *ChainNode) announceNewPeer(chainID int64, newPeerID peer.ID) {
 	}
 
 	group.peersLock.RLock()
-	defer group.peersLock.RUnlock()
-
-	n.logger.Infof("Announcing new peer %s join for chain %d", newPeerID, chainID)
-
-	// This would typically involve sending messages to peers
-	// For now, we'll just log it
+	peers := make([]peer.ID, 0, len(group.Peers))
 	for peerID := range group.Peers {
 		if peerID != newPeerID && peerID != n.host.ID() {
-			n.logger.Infof("Notifying peer %s about new peer %s in chain %d", peerID, newPeerID, chainID)
+			peers = append(peers, peerID)
 		}
+	}
+	group.peersLock.RUnlock()
+
+	n.logger.Infof("Announcing new peer %s join for chain %d to %d peers", newPeerID, chainID, len(peers))
+
+	// Use a wait group to manage concurrent notifications
+	var wg sync.WaitGroup
+	notificationChan := make(chan error, len(peers))
+
+	for _, peerID := range peers {
+		wg.Add(1)
+		go func(targetPeerID peer.ID) {
+			defer wg.Done()
+
+			if err := n.connectToPeer(targetPeerID); err != nil {
+				notificationChan <- fmt.Errorf("failed to connect to peer %s: %v", targetPeerID, err)
+				return
+			}
+
+			connectCtx, cancel := context.WithTimeout(n.ctx, ConnectionTimeout)
+			defer cancel()
+			// Open stream for new peer notification
+			stream, err := n.host.NewStream(connectCtx, targetPeerID, NewPeerNotificationProtocol)
+			if err != nil {
+				notificationChan <- fmt.Errorf("failed to open stream to peer %s: %v", targetPeerID, err)
+				return
+			}
+			defer stream.Close()
+
+			// Prepare notification payload with length-prefixed peer ID
+			newPeerIDBytes := []byte(newPeerID)
+			payload := make([]byte, 8+2+len(newPeerIDBytes))
+
+			// Write chain ID
+			binary.BigEndian.PutUint64(payload[:8], uint64(chainID))
+
+			// Write new peer ID length
+			binary.BigEndian.PutUint16(payload[8:10], uint16(len(newPeerIDBytes)))
+
+			// Write new peer ID bytes
+			copy(payload[10:], newPeerIDBytes)
+
+			// Send notification
+			if _, err := stream.Write(payload); err != nil {
+				notificationChan <- fmt.Errorf("failed to send notification to peer %s: %v", targetPeerID, err)
+				return
+			}
+
+			// Read acknowledgment
+			ackBuf := make([]byte, 1)
+			if _, err := stream.Read(ackBuf); err != nil {
+				notificationChan <- fmt.Errorf("failed to read ack from peer %s: %v", targetPeerID, err)
+				return
+			}
+
+			if ackBuf[0] != 1 {
+				notificationChan <- fmt.Errorf("peer %s did not acknowledge new peer", targetPeerID)
+				return
+			}
+
+			notificationChan <- nil
+		}(peerID)
+	}
+
+	// Wait for all notifications to complete
+	go func() {
+		wg.Wait()
+		close(notificationChan)
+	}()
+
+	// Handle notification results
+	var errors []error
+	for err := range notificationChan {
+		if err != nil {
+			errors = append(errors, err)
+		}
+	}
+
+	if len(errors) > 0 {
+		n.logger.Warnf("Errors during new peer announcement: %v", errors)
 	}
 }
 
@@ -682,6 +817,7 @@ func (n *ChainNode) handleContractQuery(stream network.Stream) {
 	}
 }
 
+// TODO: skeleton implementation for now
 // FindContract queries the network for a contract's information
 func (n *ChainNode) FindContract(ctx context.Context, chainID int64, contractAddress string) (*ContractInfo, error) {
 	// First check if executor has this contract locally

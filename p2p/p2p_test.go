@@ -245,4 +245,24 @@ func TestMultipleNodesMultipleGroups(t *testing.T) {
 	assert.Len(t, node1Chain2Peers, 2, "Chain %d should have 2 peers in node1", chainID2)
 	assert.Len(t, node2Chain1Peers, 2, "Chain %d should have 2 peers in node2", chainID1)
 	assert.Len(t, node2Chain2Peers, 2, "Chain %d should have 2 peers in node2", chainID2)
+
+	node3, err := NewChainNode(ctx, node1Multiaddrs, nil)
+	require.NoError(t, err, "Failed to create 3rd node")
+	defer node3.Close()
+
+	t.Logf("Node 3 joining chain group %d", chainID1)
+	err = node3.JoinChainGroup(chainID1)
+	require.NoError(t, err, "Failed to create chain group %d in first node", chainID1)
+
+	time.Sleep(1 * time.Second)
+	node3Groups := node3.ListChainGroups()
+
+	t.Logf("Node 3 chain groups: %v", node3Groups)
+
+	node3Chain1Peers := node3.GetChainPeers(chainID1)
+	t.Logf("Node 3 peers in chain %d: %v", chainID1, node3Chain1Peers)
+
+	assert.Len(t, node1.GetChainPeers(chainID1), 3, "Chain %d should have 3 peers in node1", chainID1)
+	assert.Len(t, node2.GetChainPeers(chainID1), 3, "Chain %d should have 3 peers in node2", chainID1)
+	assert.Len(t, node3Chain1Peers, 3, "Chain %d should have 3 peers in node3", chainID1)
 }
