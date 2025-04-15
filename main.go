@@ -28,9 +28,16 @@ var runNodeCmd = &cobra.Command{
 	RunE:  cmd.RunNode,
 }
 
+var generateCmd = &cobra.Command{
+	Use:   "generate",
+	Short: "Generate a new private key",
+	RunE:  cmd.Generate,
+}
+
 func init() {
-	rootCmd.AddCommand(serveCmd, runNodeCmd)
+	rootCmd.AddCommand(serveCmd, runNodeCmd, generateCmd)
 	runNodeCmd.Flags().StringVar(&cmd.PrivateKeyPath, "private-key", "", "Path to the private key file")
+	generateCmd.Flags().StringVar(&cmd.TargetPath, "target-path", "", "Path to save the generated private key")
 }
 
 func main() {

@@ -8,7 +8,12 @@ api1:
 clean:
 	rm -f event-pool
 
-node:
+run:
 	go build -ldflags -w
 	chmod +x event-pool
 	./event-pool run
+
+generate:
+	go build -ldflags -w
+	chmod +x event-pool
+	./event-pool generate
