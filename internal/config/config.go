@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/spf13/viper"
 )
@@ -12,7 +11,7 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Ethereum EthereumConfig `mapstructure:"ethereum"`
-	MQTT     MQTTConfig     `mapstructure:"mqtt"`
+	GRPC     GRPCConfig     `mapstructure:"grpc"`
 	Asynq    AsynqConfig    `mapstructure:"asynq"`
 }
 
@@ -40,15 +39,8 @@ type EthereumConfig struct {
 	Chains map[int]ChainConfig `mapstructure:"chains"`
 }
 
-type MQTTConfig struct {
-	BrokerURL      string        `mapstructure:"broker_url"`
-	ClientID       string        `mapstructure:"client_id"`
-	Username       string        `mapstructure:"username"`
-	Password       string        `mapstructure:"password"`
-	QoS            byte          `mapstructure:"qos"`
-	CleanSession   bool          `mapstructure:"clean_session"`
-	PingInterval   time.Duration `mapstructure:"ping_interval"`
-	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
+type GRPCConfig struct {
+	Port int `mapstructure:"port"`
 }
 
 type AsynqConfig struct {
@@ -68,8 +60,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	cfg = &Config{}
-	if err := viper.Unmarshal(cfg); err != nil {
+	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
