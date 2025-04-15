@@ -15,6 +15,7 @@ type Config struct {
 	Ethereum EthereumConfig `mapstructure:"ethereum"`
 	MQTT     MQTTConfig     `mapstructure:"mqtt"`
 	Asynq    AsynqConfig    `mapstructure:"asynq"`
+	Node     NodeConfig     `mapstructure:"node"`
 }
 
 type ServerConfig struct {
@@ -55,6 +56,11 @@ type MQTTConfig struct {
 type AsynqConfig struct {
 	RedisAddr   string `mapstructure:"redis_addr"`
 	Concurrency int    `mapstructure:"concurrency"`
+}
+
+type NodeConfig struct {
+	PrivateKeyPath string   `mapstructure:"private_key_path"`
+	WhitelistPaths []string `mapstructure:"whitelist_paths"`
 }
 
 var cfg *Config

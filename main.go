@@ -22,8 +22,15 @@ var serveCmd = &cobra.Command{
 	RunE:  cmd.RunServe,
 }
 
+var runNodeCmd = &cobra.Command{
+	Use:   "run",
+	Short: "Run a node in the event pool network",
+	RunE:  cmd.RunNode,
+}
+
 func init() {
-	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(serveCmd, runNodeCmd)
+	runNodeCmd.Flags().StringVar(&cmd.PrivateKeyPath, "private-key", "", "Path to the private key file")
 }
 
 func main() {

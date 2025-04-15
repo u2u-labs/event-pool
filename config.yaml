@@ -31,4 +31,10 @@ mqtt:
 
 asynq:
   redis_addr: "redis:6379"
-  concurrency: 10 
+  concurrency: 10
+
+node:
+  private_key_path: "./data/private_key.pem"
+  whitelist_paths:
+    - "./data/whitelist1.pub"
+    - "./data/whitelist2.pub"

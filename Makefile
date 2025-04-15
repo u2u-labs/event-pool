@@ -6,4 +6,9 @@ api1:
 	./event-pool serve
 
 clean:
-	rm -f event-pool 
+	rm -f event-pool
+
+node:
+	go build -ldflags -w
+	chmod +x event-pool
+	./event-pool run

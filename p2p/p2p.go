@@ -11,8 +11,10 @@ import (
 	"sync"
 	"time"
 
+	"event-pool/internal/keyutil"
 	"github.com/libp2p/go-libp2p"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
+	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/network"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -90,15 +92,44 @@ type ChainGroup struct {
 }
 
 // NewChainNode creates and initializes a new chain node
-func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e Executor) (*ChainNode, error) {
+func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e Executor, opts ...Option) (*ChainNode, error) {
 	// Setup logger
 	logger := SetupLogger()
 
+	// Default options
+	config := &NodeConfig{
+		PrivateKey: nil,
+		Whitelist:  nil,
+	}
+
+	// Apply any provided options
+	for _, opt := range opts {
+		opt(config)
+	}
+
+	// Use provided private key or generate a new one
+	var privKey crypto.PrivKey
+	var err error
+	if config.PrivateKey == nil {
+		privKey, _, err = keyutil.GenerateKeyPair()
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate key pair: %w", err)
+		}
+	} else {
+		privKey = config.PrivateKey
+	}
+
+	connectionGater := &WhitelistConnectionGater{
+		whitelist: config.Whitelist,
+	}
+
 	// Create libp2p node
 	h, err := libp2p.New(
+		libp2p.Identity(privKey),
 		libp2p.ListenAddrStrings("/ip4/0.0.0.0/tcp/0"),
 		libp2p.EnableRelay(),
 		libp2p.EnableNATService(),
+		libp2p.ConnectionGater(connectionGater),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create libp2p host: %w", err)
@@ -180,6 +211,28 @@ func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e E
 	node.advertise()
 
 	return node, nil
+}
+
+// Option pattern for configuration
+type Option func(*NodeConfig)
+
+type NodeConfig struct {
+	PrivateKey crypto.PrivKey
+	Whitelist  *keyutil.WhitelistManager
+}
+
+// WithPrivateKey allows setting a custom private key
+func WithPrivateKey(privKey crypto.PrivKey) Option {
+	return func(cfg *NodeConfig) {
+		cfg.PrivateKey = privKey
+	}
+}
+
+// WithWhitelist allows setting a custom whitelist
+func WithWhitelist(whitelist *keyutil.WhitelistManager) Option {
+	return func(cfg *NodeConfig) {
+		cfg.Whitelist = whitelist
+	}
 }
 
 // SetupLogger initializes and returns a zap logger configured for dev or prod
