@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -27,10 +28,41 @@ const (
 	DiscoveryInterval     = time.Minute * 10
 	ConnectionTimeout     = time.Second * 10
 	MaxConcurrentRequests = 10
+
+	ContractDiscoveryProtocol = "/contract/discovery/1.0.0"
+	ContractQueryTimeout      = time.Second * 5
 )
 
 type Executor interface {
 	ReconstructChain(ctx context.Context, chainID int64)
+
+	// New contract-related methods
+	LoadAllChainData(ctx context.Context) error
+	RegisterContract(ctx context.Context, chainID int64, contractAddress string, metadata map[string]string) error
+	HasContract(ctx context.Context, chainID int64, contractAddress string) bool
+	GetContract(ctx context.Context, chainID int64, contractAddress string) (*ContractInfo, bool)
+	ValidateContract(ctx context.Context, chainID int64, contractAddress string, responses map[peer.ID]*ContractResponse) (bool, *ContractInfo, error)
+}
+
+// ContractInfo represents information about a contract on a specific chain
+type ContractInfo struct {
+	ChainID         int64
+	ContractAddress string
+	Metadata        map[string]string
+}
+
+// ContractQuery represents a request for contract information
+type ContractQuery struct {
+	ChainID         int64  `json:"chain_id"`
+	ContractAddress string `json:"contract_address"`
+}
+
+// ContractResponse represents a response to a contract query
+type ContractResponse struct {
+	Found    bool              `json:"found"`
+	Contract ContractInfo      `json:"contract,omitempty"`
+	Error    string            `json:"error,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
 // ChainNode represents a node in the p2p network capable of joining multiple chain groups
@@ -57,7 +89,7 @@ type ChainGroup struct {
 // NewChainNode creates and initializes a new chain node
 func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e Executor) (*ChainNode, error) {
 	// Setup logger
-	logger := setupLogger()
+	logger := SetupLogger()
 
 	// Create libp2p node
 	h, err := libp2p.New(
@@ -138,6 +170,7 @@ func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e E
 
 	// Set protocol handler
 	h.SetStreamHandler(ChainProtocol, node.handleStream)
+	h.SetStreamHandler(ContractDiscoveryProtocol, node.handleContractQuery)
 
 	// Start advertising presence
 	node.advertise()
@@ -145,8 +178,8 @@ func NewChainNode(ctx context.Context, bootstrapPeers []multiaddr.Multiaddr, e E
 	return node, nil
 }
 
-// setupLogger initializes and returns a zap logger configured for dev or prod
-func setupLogger() *zap.SugaredLogger {
+// SetupLogger initializes and returns a zap logger configured for dev or prod
+func SetupLogger() *zap.SugaredLogger {
 	var cfg zap.Config
 
 	// Check environment and configure logger accordingly
@@ -198,7 +231,7 @@ func (n *ChainNode) handleStream(stream network.Stream) {
 
 	// Check if we have this chain group
 	n.chainGroupsLock.RLock()
-	_, exists := n.chainGroups[chainID]
+	groups, exists := n.chainGroups[chainID]
 	n.chainGroupsLock.RUnlock()
 
 	if !exists {
@@ -209,6 +242,23 @@ func (n *ChainNode) handleStream(stream network.Stream) {
 
 	// We have this chain group, respond with success
 	stream.Write([]byte{1}) // 1 = found
+
+	// get all peers in the group
+	groups.peersLock.RLock()
+	peers := make([]peer.ID, 0, len(groups.Peers))
+	for p := range groups.Peers {
+		peers = append(peers, p)
+	}
+	groups.peersLock.RUnlock()
+
+	// Write existed peers in the group for new peer
+	numPeers := len(peers)
+	stream.Write([]byte{byte(numPeers)})
+	// Write each peer's ID
+	for _, p := range peers {
+		peerIDBytes := []byte(p)
+		stream.Write(peerIDBytes)
+	}
 
 	// Add the peer to our chain group
 	n.addPeerToChainGroup(chainID, remotePeer)
@@ -265,7 +315,7 @@ func (n *ChainNode) advertise() {
 				n.chainGroupsLock.RLock()
 				for chainID := range n.chainGroups {
 					groupTag := fmt.Sprintf("%s%d", ChainGroupPrefix, chainID)
-					_, err := n.routingDiscovery.Advertise(n.ctx, groupTag)
+					_, err = n.routingDiscovery.Advertise(n.ctx, groupTag)
 					if err != nil {
 						n.logger.Warnf("Error advertising chain group %d: %v", chainID, err)
 					}
@@ -305,14 +355,12 @@ func (n *ChainNode) JoinChainGroup(chainID int64) error {
 	for p := range peers {
 		if p.ID != n.host.ID() {
 			candidatePeers = append(candidatePeers, p)
+			n.logger.Infow("Found peer in group", "peer", p.ID, "groupTag", groupTag)
 		}
-		n.logger.Infow("Found peer", "peer", p.ID)
 	}
 
 	// If we found peers for this chain group
 	if len(candidatePeers) > 0 {
-		n.logger.Infof("Found %d potential peers for chain %d", len(candidatePeers), chainID)
-
 		// Try to join the chain group via one of the peers
 		for _, peerInfo := range candidatePeers {
 			if err := n.joinViaExistingPeer(peerInfo, chainID); err == nil {
@@ -396,12 +444,72 @@ func (n *ChainNode) joinViaExistingPeer(peerInfo peer.AddrInfo, chainID int64) e
 		return fmt.Errorf("peer doesn't have chain group")
 	}
 
-	// Successfully joined the chain group
-	n.createNewChainGroup(chainID)
-	n.addPeerToChainGroup(chainID, peerInfo.ID)
+	// Read existed peers in the group
+	numPeersBuf := make([]byte, 1)
+	_, err = stream.Read(numPeersBuf)
+	if err != nil {
+		n.logger.Warnf("Failed to read number of peers: %v", err)
+		return err
+	}
 
+	numPeers := int(numPeersBuf[0])
+	n.logger.Infof("Received %d peers for chain group %d", numPeers, chainID)
+
+	// Create the chain group if it doesn't exist
+	n.createNewChainGroup(chainID)
+
+	// Read peer IDs
+	for i := 0; i < numPeers; i++ {
+		// Read peer ID length (assuming fixed length for simplicity)
+		peerIDBytes := make([]byte, len(peerInfo.ID))
+		_, err := stream.Read(peerIDBytes)
+		if err != nil {
+			n.logger.Warnf("Failed to read peer ID: %v", err)
+			continue
+		}
+
+		// Convert bytes back to peer ID
+		peerID, err := peer.IDFromBytes(peerIDBytes)
+		if err != nil {
+			n.logger.Warnf("Invalid peer ID: %v", err)
+			continue
+		}
+
+		// Try to connect to the peer
+		err = n.connectToPeer(peerID, chainID)
+		if err != nil {
+			n.logger.Warnf("Failed to connect to peer %s: %v", peerID, err)
+			continue
+		}
+
+		// Add peer to the chain group
+		n.addPeerToChainGroup(chainID, peerID)
+	}
+
+	// add itself to the chain group
+	n.addPeerToChainGroup(chainID, n.host.ID())
 	// Reconstruct chain event (placeholder)
 	go n.reconstructChain(chainID)
+
+	return nil
+}
+
+func (n *ChainNode) connectToPeer(peerID peer.ID, chainID int64) error {
+	peerInfo, err := n.dht.FindPeer(n.ctx, peerID)
+	if err != nil {
+		return fmt.Errorf("could not connect to peer %s through any method", peerID)
+	}
+	if peerInfo.ID == n.host.ID() {
+		return fmt.Errorf("cannot connect to self")
+	}
+
+	connectCtx, cancel := context.WithTimeout(n.ctx, ConnectionTimeout)
+	defer cancel()
+
+	if err = n.host.Connect(connectCtx, peerInfo); err != nil {
+		return err
+	}
+	n.logger.Infof("Connected to peer %s via DHT", peerID)
 
 	return nil
 }
@@ -463,7 +571,6 @@ func (n *ChainNode) announceNewPeer(chainID int64, newPeerID peer.ID) {
 	for peerID := range group.Peers {
 		if peerID != newPeerID && peerID != n.host.ID() {
 			n.logger.Infof("Notifying peer %s about new peer %s in chain %d", peerID, newPeerID, chainID)
-			// Here you would implement actual notification logic
 		}
 	}
 }
@@ -533,4 +640,168 @@ func (n *ChainNode) Close() error {
 
 	n.logger.Info("Node shutdown complete")
 	return nil
+}
+
+// New method for ChainNode
+// handleContractQuery delegates contract queries to the Executor
+func (n *ChainNode) handleContractQuery(stream network.Stream) {
+	defer stream.Close()
+
+	// Read the query
+	var query ContractQuery
+	err := json.NewDecoder(stream).Decode(&query)
+	if err != nil {
+		n.logger.Errorf("Error decoding contract query: %v", err)
+		return
+	}
+
+	n.logger.Infof("Received contract query for chain %d, address %s",
+		query.ChainID, query.ContractAddress)
+
+	// Delegate contract lookup to the executor
+	exists := n.executor.HasContract(n.ctx, query.ChainID, query.ContractAddress)
+
+	// Create response
+	response := ContractResponse{
+		Found: exists,
+	}
+
+	if exists {
+		// If contract exists, get details
+		if contractInfo, ok := n.executor.GetContract(n.ctx, query.ChainID, query.ContractAddress); ok {
+			response.Contract = *contractInfo
+		}
+	} else {
+		response.Error = "Contract not found"
+	}
+
+	// Send response
+	err = json.NewEncoder(stream).Encode(response)
+	if err != nil {
+		n.logger.Errorf("Error encoding contract response: %v", err)
+	}
+}
+
+// FindContract queries the network for a contract's information
+func (n *ChainNode) FindContract(ctx context.Context, chainID int64, contractAddress string) (*ContractInfo, error) {
+	// First check if executor has this contract locally
+	if n.executor.HasContract(ctx, chainID, contractAddress) {
+		contractInfo, _ := n.executor.GetContract(ctx, chainID, contractAddress)
+		return contractInfo, nil
+	}
+
+	// Get peers for this chain
+	n.chainGroupsLock.RLock()
+	group, exists := n.chainGroups[chainID]
+	n.chainGroupsLock.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("not connected to chain %d", chainID)
+	}
+
+	group.peersLock.RLock()
+	peers := make([]peer.ID, 0, len(group.Peers))
+	for peerID := range group.Peers {
+		if peerID != n.host.ID() { // Exclude self
+			peers = append(peers, peerID)
+		}
+	}
+	group.peersLock.RUnlock()
+
+	if len(peers) == 0 {
+		return nil, fmt.Errorf("no peers available for chain %d", chainID)
+	}
+
+	// Query multiple peers for contract info
+	type peerResponse struct {
+		peerID   peer.ID
+		response *ContractResponse
+		err      error
+	}
+
+	resultChan := make(chan peerResponse)
+	queryCtx, cancel := context.WithTimeout(ctx, ContractQueryTimeout)
+	defer cancel()
+
+	// Query each peer
+	for _, pID := range peers {
+		go func(peerID peer.ID) {
+			response, err := n.queryPeerForContract(queryCtx, peerID, chainID, contractAddress)
+			resultChan <- peerResponse{peerID, response, err}
+		}(pID)
+	}
+
+	// Collect responses
+	responses := make(map[peer.ID]*ContractResponse)
+	var lastError error
+
+	// Wait for responses or timeout
+	for i := 0; i < len(peers); i++ {
+		select {
+		case result := <-resultChan:
+			if result.err != nil {
+				lastError = result.err
+				n.logger.Warnf("Error querying peer %s: %v", result.peerID, result.err)
+				continue
+			}
+			responses[result.peerID] = result.response
+		case <-queryCtx.Done():
+			if len(responses) == 0 {
+				return nil, fmt.Errorf("contract query timed out")
+			}
+			break
+		}
+	}
+
+	// Delegate validation to executor to determine consensus and get contract info
+	valid, contractInfo, err := n.executor.ValidateContract(ctx, chainID, contractAddress, responses)
+	if err != nil {
+		if lastError != nil {
+			return nil, fmt.Errorf("%v (underlying error: %v)", err, lastError)
+		}
+		return nil, err
+	}
+
+	if !valid {
+		return nil, fmt.Errorf("contract not yet indexed or not enough consensus among peers")
+	}
+
+	// Register the contract locally if it was found
+	if contractInfo != nil {
+		n.executor.RegisterContract(ctx, chainID, contractAddress, contractInfo.Metadata)
+	}
+
+	return contractInfo, nil
+}
+
+// queryPeerForContract sends a contract query to a specific peer
+func (n *ChainNode) queryPeerForContract(ctx context.Context, peerID peer.ID,
+	chainID int64, contractAddress string) (*ContractResponse, error) {
+
+	// Open stream to peer
+	stream, err := n.host.NewStream(ctx, peerID, ContractDiscoveryProtocol)
+	if err != nil {
+		return nil, fmt.Errorf("failed to open stream to peer %s: %w", peerID, err)
+	}
+	defer stream.Close()
+
+	// Send query
+	query := ContractQuery{
+		ChainID:         chainID,
+		ContractAddress: contractAddress,
+	}
+
+	err = json.NewEncoder(stream).Encode(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode query: %w", err)
+	}
+
+	// Read response
+	var response ContractResponse
+	err = json.NewDecoder(stream).Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &response, nil
 }

@@ -65,14 +65,14 @@ func TestConnectToExistingGroup(t *testing.T) {
 	defer node2.Close()
 
 	// Wait a moment for discovery
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Join the same chain group
 	err = node2.JoinChainGroup(chainID)
 	require.NoError(t, err, "Failed to join existing chain group")
 
 	// Wait for group synchronization
-	time.Sleep(2 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Verify both nodes list the chain group
 	assert.Contains(t, node1.ListChainGroups(), chainID, "First node should be in chain group %d", chainID)
@@ -162,7 +162,7 @@ func TestMultipleNodesMultipleGroups(t *testing.T) {
 	defer node2.Close()
 
 	// Wait for initial connection to establish
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Define two chain IDs to test with
 	chainID1 := int64(101)
@@ -179,7 +179,7 @@ func TestMultipleNodesMultipleGroups(t *testing.T) {
 	require.NoError(t, err, "Failed to join chain group %d with second node", chainID1)
 
 	// Wait for synchronization
-	time.Sleep(3 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Now for the second chain, node2 creates it first
 	t.Logf("Node 2 joining chain group %d", chainID2)
@@ -192,7 +192,7 @@ func TestMultipleNodesMultipleGroups(t *testing.T) {
 	require.NoError(t, err, "Failed to join chain group %d with first node", chainID2)
 
 	// Wait for group synchronization
-	time.Sleep(5 * time.Second)
+	time.Sleep(1 * time.Second)
 
 	// Verify both nodes list both chain groups
 	node1Groups := node1.ListChainGroups()
@@ -229,7 +229,7 @@ func TestMultipleNodesMultipleGroups(t *testing.T) {
 			break
 		}
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(1 * time.Second)
 	}
 
 	assert.True(t, success, "Both nodes should see each other in both chain groups")
@@ -242,7 +242,7 @@ func TestMultipleNodesMultipleGroups(t *testing.T) {
 	node2Chain2Peers := node2.GetChainPeers(chainID2)
 
 	assert.Len(t, node1Chain1Peers, 2, "Chain %d should have 2 peers in node1", chainID1)
-	assert.Len(t, node1Chain2Peers, 1, "Chain %d should have 1 peer in node1", chainID2)
-	assert.Len(t, node2Chain1Peers, 1, "Chain %d should have 1 peer in node2", chainID1)
+	assert.Len(t, node1Chain2Peers, 2, "Chain %d should have 2 peers in node1", chainID2)
+	assert.Len(t, node2Chain1Peers, 2, "Chain %d should have 2 peers in node2", chainID1)
 	assert.Len(t, node2Chain2Peers, 2, "Chain %d should have 2 peers in node2", chainID2)
 }

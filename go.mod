@@ -1,6 +1,6 @@
 module event-pool
 
-go 1.23.8
+go 1.24.1
 
 require (
 	github.com/eclipse/paho.mqtt.golang v1.4.3
