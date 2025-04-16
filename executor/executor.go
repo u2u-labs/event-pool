@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"sync"
 
-	"event-pool/p2p"
+	"event-pool/network"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"go.uber.org/zap"
 )
 
-// ContractExecutor implements the p2p.Executor interface
+// ContractExecutor implements the network.Executor interface
 type ContractExecutor struct {
 	mutex  sync.RWMutex
 	logger *zap.SugaredLogger
@@ -46,7 +46,7 @@ func (e *ContractExecutor) HasContract(ctx context.Context, chainID int64, contr
 }
 
 // GetContract retrieves a contract from the registry
-func (e *ContractExecutor) GetContract(ctx context.Context, chainID int64, contractAddress string) (*p2p.ContractInfo, bool) {
+func (e *ContractExecutor) GetContract(ctx context.Context, chainID int64, contractAddress string) (*network.ContractInfo, bool) {
 	e.mutex.RLock()
 	defer e.mutex.RUnlock()
 
@@ -55,11 +55,11 @@ func (e *ContractExecutor) GetContract(ctx context.Context, chainID int64, contr
 
 // ValidateContract validates contract responses from peers and implements consensus logic
 func (e *ContractExecutor) ValidateContract(ctx context.Context, chainID int64, contractAddress string,
-	responses map[peer.ID]*p2p.ContractResponse) (bool, *p2p.ContractInfo, error) {
+	responses map[peer.ID]*network.ContractResponse) (bool, *network.ContractInfo, error) {
 
 	// Count "found" responses
 	foundCount := 0
-	var foundInfo *p2p.ContractInfo
+	var foundInfo *network.ContractInfo
 
 	totalResponses := len(responses)
 	if totalResponses == 0 {

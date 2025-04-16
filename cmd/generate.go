@@ -3,8 +3,8 @@ package cmd
 import (
 	"fmt"
 
-	"event-pool/internal/keyutil"
-	"event-pool/p2p"
+	"event-pool/network"
+	"event-pool/network/secrets"
 	"github.com/spf13/cobra"
 )
 
@@ -13,9 +13,9 @@ var (
 )
 
 func Generate(cmd *cobra.Command, args []string) error {
-	logger := p2p.SetupLogger()
+	logger := network.SetupLogger()
 
-	privKey, _, err := keyutil.GenerateKeyPair()
+	privKey, _, err := secrets.GenerateKeyPair()
 	if err != nil {
 		logger.Fatalf("Failed to generate key pair: %v", err)
 	}
@@ -23,12 +23,12 @@ func Generate(cmd *cobra.Command, args []string) error {
 		TargetPath = "./data/tmp/key"
 	}
 
-	_ = keyutil.SavePrivateKey(privKey, TargetPath)
+	_ = secrets.SavePrivateKey(privKey, TargetPath)
 	privKeyBytes, _ := privKey.Raw()
 
 	// save pub key
 	pubKeyBytes, _ := privKey.GetPublic().Raw()
-	_ = keyutil.SavePublicKey(privKey.GetPublic(), TargetPath+".pub")
+	_ = secrets.SavePublicKey(privKey.GetPublic(), TargetPath+".pub")
 
 	logger.Infow("Key info", "privateKey", fmt.Sprintf("%x", privKeyBytes), "publicKey", fmt.Sprintf("%x", pubKeyBytes))
 

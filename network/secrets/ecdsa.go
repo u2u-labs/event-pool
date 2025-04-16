@@ -1,0 +1,3 @@
+package secrets
+
+// keypair edcsa
