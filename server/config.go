@@ -29,6 +29,8 @@ type Config struct {
 	SecretsManager *secrets.SecretsManagerConfig
 
 	LogLevel zapcore.Level
+
+	DbUrl string
 }
 
 // Telemetry holds the config details for metric services

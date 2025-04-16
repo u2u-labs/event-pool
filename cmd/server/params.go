@@ -137,5 +137,6 @@ func (p *serverParams) generateConfig() *server.Config {
 		DataDir:        p.rawConfig.DataDir,
 		SecretsManager: p.secretsConfig,
 		LogLevel:       lvl,
+		DbUrl:          p.rawConfig.Database.Url,
 	}
 }

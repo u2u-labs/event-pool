@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"event-pool/chain"
+	db2 "event-pool/internal/db"
 	"event-pool/jsonrpc"
 	"event-pool/network"
+	"event-pool/prisma/db"
 	"event-pool/secrets"
 	"event-pool/server/proto"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -49,6 +51,8 @@ type Server struct {
 
 	// secrets manager
 	secretsManager secrets.SecretsManager
+
+	db *db.PrismaClient
 }
 
 var dirPaths = []string{
@@ -79,11 +83,17 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, fmt.Errorf("could not setup new logger instance, %w", err)
 	}
 
+	dbClient, err := db2.NewClient(db.WithDatasourceURL(config.DbUrl))
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
 	m := &Server{
 		logger:     logger.Named("server"),
 		config:     config,
 		chain:      config.Chain,
 		grpcServer: grpc.NewServer(),
+		db:         dbClient,
 	}
 
 	m.logger.Infow("Data dir", "path", config.DataDir)
@@ -268,6 +278,7 @@ func (s *Server) Close() {
 
 	// close DataDog profiler
 	s.closeDataDogProfiler()
+	db2.Close(s.db)
 }
 
 // Entry is a consensus configuration entry

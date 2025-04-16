@@ -22,6 +22,7 @@ type Config struct {
 	Network           *Network         `json:"network" yaml:"network"`
 	LogLevel          string           `json:"log_level" yaml:"log_level"`
 	NodeChain         *chain.NodeChain `json:"node_chain" yaml:"node_chain"`
+	Database          *Database        `json:"database" yaml:"database"`
 }
 
 // Telemetry holds the config details for metric services.
@@ -40,11 +41,8 @@ type Network struct {
 	MaxInboundPeers  int64  `json:"max_inbound_peers,omitempty" yaml:"max_inbound_peers,omitempty"`
 }
 
-// TxPool defines the TxPool configuration params
-type TxPool struct {
-	PriceLimit         uint64 `json:"price_limit" yaml:"price_limit"`
-	MaxSlots           uint64 `json:"max_slots" yaml:"max_slots"`
-	MaxAccountEnqueued uint64 `json:"max_account_enqueued" yaml:"max_account_enqueued"`
+type Database struct {
+	Url string `json:"url" yaml:"url"`
 }
 
 // Headers defines the HTTP response headers required to enable CORS.
