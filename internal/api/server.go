@@ -227,7 +227,7 @@ func (s *Server) Stop() {
 		}
 	}
 	if s.consulClient != nil {
-		if err := s.consulClient.Agent().ServiceDeregister(s.config.Consul.ServiceID); err != nil {
+		if err := s.consulClient.Agent().ServiceDeregister(s.config.Consul.ID); err != nil {
 			log.Printf("Failed to deregister service from Consul: %v", err)
 		} else {
 			log.Println("Service deregistered from Consul")
