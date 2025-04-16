@@ -6,13 +6,13 @@ import (
 )
 
 // GetWhitelist fetches whitelist object from the config
-func GetWhitelist(config *chain.Chain) *chain.Whitelists {
+func GetWhitelist(config *chain.NodeChain) *chain.Whitelists {
 	return config.Params.Whitelists
 }
 
 // GetDeploymentWhitelist fetches deployment whitelist from the genesis config
 // if doesn't exist returns empty list
-func GetDeploymentWhitelist(genesisConfig *chain.Chain) ([]types.Address, error) {
+func GetDeploymentWhitelist(genesisConfig *chain.NodeChain) ([]types.Address, error) {
 	// Fetch whitelist config if exists, if not init
 	whitelistConfig := GetWhitelist(genesisConfig)
 

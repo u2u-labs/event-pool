@@ -174,3 +174,30 @@ func PadLeftOrTrim(bb []byte, size int) []byte {
 
 	return tmp
 }
+
+func HasCommonElement(slice1, slice2 []int64) bool {
+	// Create a map to store elements from the first slice
+	elementMap := make(map[int64]bool)
+
+	// Add all elements from the first slice to the map
+	for _, num := range slice1 {
+		elementMap[num] = true
+	}
+
+	// Check if any element from the second slice exists in the map
+	for _, num := range slice2 {
+		if elementMap[num] {
+			return true // Found a common element
+		}
+	}
+
+	return false // No common elements found
+}
+
+func IntSliceToInt64Slice(in []int) []int64 {
+	out := make([]int64, len(in))
+	for i, v := range in {
+		out[i] = int64(v)
+	}
+	return out
+}

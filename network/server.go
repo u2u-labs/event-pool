@@ -67,6 +67,9 @@ type Server struct {
 	peers     map[peer.ID]*PeerConnInfo // map of all peer connections
 	peersLock sync.Mutex                // lock for the peer map
 
+	chainIdGroup     map[string]struct{} // map of chain IDs to track which chains we are connected to
+	chainIdGroupLock sync.Mutex          // lock for the chain IDs map
+
 	metrics *Metrics // reference for metrics tracking
 
 	dialQueue *dial.DialQueue // queue used to asynchronously connect to peers
@@ -788,4 +791,23 @@ func (s *Server) updatePendingConnCountMetrics(direction network.Direction) {
 			float64(s.connectionCounts.GetPendingOutboundConnCount()),
 		)
 	}
+}
+
+func (s *Server) AddChainIdToGroup(chainId string) {
+	s.chainIdGroupLock.Lock()
+	defer s.chainIdGroupLock.Unlock()
+	s.chainIdGroup[chainId] = struct{}{}
+}
+
+func (s *Server) RemoveChainIdFromGroup(chainId string) {
+	s.chainIdGroupLock.Lock()
+	defer s.chainIdGroupLock.Unlock()
+	delete(s.chainIdGroup, chainId)
+}
+
+func (s *Server) HasChainIdInGroup(chainId string) bool {
+	s.chainIdGroupLock.Lock()
+	defer s.chainIdGroupLock.Unlock()
+	_, ok := s.chainIdGroup[chainId]
+	return ok
 }

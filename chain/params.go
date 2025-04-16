@@ -6,7 +6,7 @@ import (
 
 // Params are all the set of params for the chain
 type Params struct {
-	ChainID    int         `json:"chain_id"`
+	ChainIDs   []int       `json:"chain_id"`
 	Whitelists *Whitelists `json:"whitelists,omitempty"`
 }
 

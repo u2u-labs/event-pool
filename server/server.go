@@ -26,12 +26,10 @@ import (
 type Server struct {
 	logger *zap.SugaredLogger
 	config *Config
-	//state        state.State
-	//stateStorage itrie.Storage
 
 	//consensus consensus.Consensus
 
-	chain *chain.Chain
+	chain *chain.NodeChain
 
 	// state executor
 	//executor *state.Executor
@@ -244,7 +242,7 @@ func (s *Server) setupGRPC() error {
 }
 
 // Chain returns the chain object of the client
-func (s *Server) Chain() *chain.Chain {
+func (s *Server) Chain() *chain.NodeChain {
 	return s.chain
 }
 

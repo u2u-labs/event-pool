@@ -26,12 +26,6 @@ func (s *systemService) GetStatus(ctx context.Context, req *empty.Empty) (*proto
 	return status, nil
 }
 
-// Subscribe implements the blockchain event subscription service
-func (s *systemService) Subscribe(req *empty.Empty, stream proto.System_SubscribeServer) error {
-
-	return nil
-}
-
 // PeersAdd implements the 'peers add' operator service
 func (s *systemService) PeersAdd(_ context.Context, req *proto.PeersAddRequest) (*proto.PeersAddResponse, error) {
 	if joinErr := s.server.JoinPeer(req.Id); joinErr != nil {

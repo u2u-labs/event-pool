@@ -10,11 +10,11 @@ import (
 )
 
 func TestIdentityHandshake(t *testing.T) {
-	defaultChainID := 100
+	defaultChainID := []int{100}
 
 	testTable := []struct {
 		name    string
-		chainID int
+		chainID []int
 	}{
 		{
 			"Successful handshake (same chain ID)",
@@ -22,7 +22,7 @@ func TestIdentityHandshake(t *testing.T) {
 		},
 		{
 			"Unsuccessful handshake (different chain ID)",
-			defaultChainID + defaultChainID,
+			[]int{defaultChainID[0] * 2},
 		},
 	}
 
@@ -32,14 +32,14 @@ func TestIdentityHandshake(t *testing.T) {
 				0: {
 					ConfigCallback: func(c *Config) {
 						c.Chain.Params = &chain.Params{
-							ChainID: defaultChainID,
+							ChainIDs: defaultChainID,
 						}
 					},
 				},
 				1: {
 					ConfigCallback: func(c *Config) {
 						c.Chain.Params = &chain.Params{
-							ChainID: testCase.chainID,
+							ChainIDs: testCase.chainID,
 						}
 					},
 				},
@@ -54,8 +54,8 @@ func TestIdentityHandshake(t *testing.T) {
 			})
 
 			chainIDs := []int{
-				servers[0].config.Chain.Params.ChainID,
-				servers[1].config.Chain.Params.ChainID,
+				servers[0].config.Chain.Params.ChainIDs[0],
+				servers[1].config.Chain.Params.ChainIDs[0],
 			}
 
 			shouldSucceed := chainIDs[0] == chainIDs[1]

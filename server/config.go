@@ -15,7 +15,7 @@ const DefaultJSONRPCPort int = 8545
 
 // Config is used to parametrize the minimal client
 type Config struct {
-	Chain *chain.Chain
+	Chain *chain.NodeChain
 
 	JSONRPC    *JSONRPC
 	GRPCAddr   *net.TCPAddr

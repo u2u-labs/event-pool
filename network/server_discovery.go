@@ -255,3 +255,13 @@ func (s *Server) registerDiscoveryService(discovery *discovery.DiscoveryService)
 
 	s.RegisterProtocol(common.DiscProto, grpcStream)
 }
+
+func (s *Server) GetChainIdGroup() []string {
+	s.chainIdGroupLock.Lock()
+	defer s.chainIdGroupLock.Unlock()
+	rs := make([]string, 0)
+	for v := range s.chainIdGroup {
+		rs = append(rs, v)
+	}
+	return rs
+}
