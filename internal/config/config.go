@@ -13,11 +13,13 @@ type Config struct {
 	Ethereum EthereumConfig `mapstructure:"ethereum"`
 	GRPC     GRPCConfig     `mapstructure:"grpc"`
 	Asynq    AsynqConfig    `mapstructure:"asynq"`
+	Consul   ConsulConfig   `mapstructure:"consul"`
 }
 
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Host string `mapstructure:"host"`
+	Port    int    `mapstructure:"port"`
+	Host    string `mapstructure:"host"`
+	Address string `mapstructure:"address"`
 }
 
 type DatabaseConfig struct {
@@ -48,6 +50,19 @@ type AsynqConfig struct {
 	Concurrency int    `mapstructure:"concurrency"`
 }
 
+type ConsulConfig struct {
+	ID          string `mapstructure:"id"`
+	Host        string `mapstructure:"host"`
+	Port        int    `mapstructure:"port"`
+	ServiceID   string `mapstructure:"service_id"`
+	HealthCheck struct {
+		Port     int    `mapstructure:"port"`
+		Path     string `mapstructure:"path"`
+		Interval string `mapstructure:"interval"`
+		Timeout  string `mapstructure:"timeout"`
+	} `mapstructure:"health_check"`
+}
+
 var cfg *Config
 
 func Load() (*Config, error) {
@@ -69,4 +84,14 @@ func Load() (*Config, error) {
 
 func Get() *Config {
 	return cfg
+}
+
+// GetConsulAddr returns the Consul address in the format host:port
+func (c *Config) GetConsulAddr() string {
+	return fmt.Sprintf("%s:%d", c.Consul.Host, c.Consul.Port)
+}
+
+// GetServiceAddr returns the service address in the format host:port
+func (c *Config) GetServiceAddr() string {
+	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
 }

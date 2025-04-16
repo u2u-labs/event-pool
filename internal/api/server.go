@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"event-pool/internal/config"
 	"event-pool/internal/monitor"
@@ -12,15 +13,19 @@ import (
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
+
+	"github.com/hashicorp/consul/api"
 )
 
 type Server struct {
-	config     *config.Config
-	db         *db.PrismaClient
-	worker     *worker.Worker
-	grpcServer *grpc.Server
-	ethClients map[int]*ethereum.Client
-	monitor    *monitor.Monitor
+	config       *config.Config
+	db           *db.PrismaClient
+	worker       *worker.Worker
+	grpcServer   *grpc.Server
+	ethClients   map[int]*ethereum.Client
+	monitor      *monitor.Monitor
+	httpServer   *http.Server
+	consulClient *api.Client
 }
 
 // MonitorStatus represents the current status of the monitor
@@ -69,21 +74,15 @@ func (s *Server) StartMonitor() error {
 	return s.monitor.Start(context.Background())
 }
 
-// Stop stops the server and its components
-func (s *Server) Stop() {
-	if s.monitor != nil {
-		s.monitor.Stop()
-		log.Println("Monitor stopped")
-	}
-	if s.grpcServer != nil {
-		s.grpcServer.Stop()
-		log.Println("gRPC server stopped")
-	}
-}
-
+// Start starts the server and its components
 func (s *Server) Start() error {
-	// Start the gRPC server
+	if s == nil {
+		return fmt.Errorf("server is not initialized")
+	}
+
+	// Start the gRPC server first
 	go func() {
+		log.Printf("Starting gRPC server on port %d", s.config.GRPC.Port)
 		if err := s.grpcServer.Start(s.config.GRPC.Port); err != nil {
 			log.Printf("gRPC server error: %v", err)
 		}
@@ -136,8 +135,102 @@ func (s *Server) Start() error {
 			status.IsRunning, status.ActiveContracts, status.LastBlock)
 	})
 
+	// Add health check endpoint
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	// Start the HTTP server
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
 	log.Printf("Starting HTTP server on %s", addr)
-	return http.ListenAndServe(addr, nil)
+
+	// Create a new server with timeouts
+	s.httpServer = &http.Server{
+		Addr:         addr,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start the server in a goroutine
+	go func() {
+		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Printf("HTTP server error: %v", err)
+		}
+	}()
+
+	// Register with Consul
+	if err := s.registerWithConsul(); err != nil {
+		return fmt.Errorf("failed to register with Consul: %w", err)
+	}
+
+	return nil
+}
+
+// registerWithConsul registers the service with Consul
+func (s *Server) registerWithConsul() error {
+	// Create Consul client
+	consulConfig := api.DefaultConfig()
+	consulConfig.Address = s.config.GetConsulAddr()
+	consulClient, err := api.NewClient(consulConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create Consul client: %w", err)
+	}
+	s.consulClient = consulClient
+
+	// Create tags for each chain this node handles
+	var tags []string
+	for chainID := range s.config.Ethereum.Chains {
+		tags = append(tags, fmt.Sprintf("chain:%d", chainID))
+	}
+
+	// Create registration
+	registration := &api.AgentServiceRegistration{
+		ID:      s.config.Consul.ID,
+		Name:    s.config.Consul.ServiceID,
+		Port:    s.config.GRPC.Port,
+		Address: s.config.Server.Address,
+		Check: &api.AgentServiceCheck{
+			HTTP:     fmt.Sprintf("%v:%d/health", s.config.Server.Address, s.config.Consul.HealthCheck.Port),
+			Interval: s.config.Consul.HealthCheck.Interval,
+			Timeout:  s.config.Consul.HealthCheck.Timeout,
+		},
+		Tags: tags,
+	}
+
+	if err := s.consulClient.Agent().ServiceRegister(registration); err != nil {
+		return fmt.Errorf("failed to register service: %w", err)
+	}
+
+	fmt.Printf("Successfully registered service with Consul: %s, chains: %v", s.config.Consul.ServiceID, tags)
+	return nil
+}
+
+// Stop stops the server and its components
+func (s *Server) Stop() {
+	if s.monitor != nil {
+		s.monitor.Stop()
+		log.Println("Monitor stopped")
+	}
+	if s.grpcServer != nil {
+		s.grpcServer.Stop()
+		log.Println("gRPC server stopped")
+	}
+	if s.httpServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := s.httpServer.Shutdown(ctx); err != nil {
+			log.Printf("HTTP server shutdown error: %v", err)
+		} else {
+			log.Println("HTTP server stopped")
+		}
+	}
+	if s.consulClient != nil {
+		if err := s.consulClient.Agent().ServiceDeregister(s.config.Consul.ServiceID); err != nil {
+			log.Printf("Failed to deregister service from Consul: %v", err)
+		} else {
+			log.Println("Service deregistered from Consul")
+		}
+	}
 }
