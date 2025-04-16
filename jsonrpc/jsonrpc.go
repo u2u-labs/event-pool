@@ -88,7 +88,7 @@ func NewJSONRPC(logger *zap.SugaredLogger, config *Config) (*JSONRPC, error) {
 }
 
 func (j *JSONRPC) setupHTTP() error {
-	j.logger.Info("http server started", "addr", j.config.Addr.String())
+	j.logger.Infow("http server started", "addr", j.config.Addr.String())
 
 	lis, err := net.Listen("tcp", j.config.Addr.String())
 	if err != nil {

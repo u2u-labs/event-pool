@@ -33,8 +33,16 @@ asynq:
   redis_addr: "redis:6379"
   concurrency: 10
 
-node:
-  private_key_path: "./data/private_key.pem"
-  whitelist_paths:
-    - "./data/whitelist1.pub"
-    - "./data/whitelist2.pub"
+node_chain:
+  name: "event_pool"
+  params:
+    config:
+      chain_ids: [2484, 39]
+      whitelists:
+        deployment: ["0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1", "0x2743eEC46576f76f47334569074242F3D9a90B44"]
+  genesis:
+  bootnodes:
+    - "/ip4/127.0.0.1/tcp/10006/p2p/16Uiu2HAkwTeJQzMwzSgLDnifn71B4c4DQaKbLSvGAAa9vMbSR2h6"
+grpc_addr: :10000
+data_dir: ./data/tmp
+jsonrpc_addr: :10002

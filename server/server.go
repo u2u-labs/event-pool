@@ -86,7 +86,8 @@ func NewServer(config *Config) (*Server, error) {
 		grpcServer: grpc.NewServer(),
 	}
 
-	m.logger.Info("Data dir", "path", config.DataDir)
+	m.logger.Infow("Data dir", "path", config.DataDir)
+	m.logger.Infow("Config", "config", config)
 
 	//// Generate all the paths in the dataDir
 	//if err := common.SetupDataDir(config.DataDir, dirPaths); err != nil {
@@ -209,6 +210,7 @@ func (s *Server) setupJSONRPC() error {
 
 	conf := &jsonrpc.Config{
 		Store: hub,
+		Addr:  s.config.JSONRPC.JSONRPCAddr,
 	}
 
 	srv, err := jsonrpc.NewJSONRPC(s.logger, conf)
@@ -236,7 +238,7 @@ func (s *Server) setupGRPC() error {
 		}
 	}()
 
-	s.logger.Info("GRPC server running", "addr", s.config.GRPCAddr.String())
+	s.logger.Infow("GRPC server running", "addr", s.config.GRPCAddr.String())
 
 	return nil
 }

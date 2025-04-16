@@ -8,6 +8,7 @@ require (
 	github.com/ethereum/go-ethereum v1.15.7
 	github.com/go-kit/kit v0.13.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/hcl v1.0.1-vault-7
 	github.com/hibiken/asynq v0.25.1
 	github.com/joho/godotenv v1.5.1
 	github.com/libp2p/go-libp2p v0.41.1
@@ -26,6 +27,7 @@ require (
 	google.golang.org/grpc v1.64.1
 	google.golang.org/protobuf v1.36.6
 	gopkg.in/DataDog/dd-trace-go.v1 v1.72.2
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -220,7 +222,6 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250414145226-207652e42e2e // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.4.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )

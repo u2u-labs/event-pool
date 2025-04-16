@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"event-pool/cmd"
+	"event-pool/cmd/server"
 
 	"github.com/spf13/cobra"
 )
@@ -22,22 +23,11 @@ var serveCmd = &cobra.Command{
 	RunE:  cmd.RunServe,
 }
 
-var runNodeCmd = &cobra.Command{
-	Use:   "run",
-	Short: "Run a node in the event pool network",
-	RunE:  cmd.RunNode,
-}
-
-var generateCmd = &cobra.Command{
-	Use:   "generate",
-	Short: "Generate a new private key",
-	RunE:  cmd.Generate,
-}
-
 func init() {
-	rootCmd.AddCommand(serveCmd, runNodeCmd, generateCmd)
-	runNodeCmd.Flags().StringVar(&cmd.PrivateKeyPath, "private-key", "", "Path to the private key file")
-	generateCmd.Flags().StringVar(&cmd.TargetPath, "target-path", "", "Path to save the generated private key")
+	rootCmd.AddCommand(
+		serveCmd,
+		server.GetCommand(),
+	)
 }
 
 func main() {

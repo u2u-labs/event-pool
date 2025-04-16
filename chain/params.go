@@ -6,11 +6,11 @@ import (
 
 // Params are all the set of params for the chain
 type Params struct {
-	ChainIDs   []int       `json:"chain_id"`
-	Whitelists *Whitelists `json:"whitelists,omitempty"`
+	ChainIDs   []int       `json:"chain_ids" yaml:"chain_ids"`
+	Whitelists *Whitelists `json:"whitelists,omitempty" yaml:"whitelists"`
 }
 
 // Whitelists specifies supported whitelists
 type Whitelists struct {
-	Deployment []types.Address `json:"deployment,omitempty"`
+	Deployment []types.Address `json:"deployment,omitempty" yaml:"deployment"`
 }
