@@ -24,6 +24,7 @@ const (
 	System_PeersAdd_FullMethodName    = "/v1.System/PeersAdd"
 	System_PeersList_FullMethodName   = "/v1.System/PeersList"
 	System_PeersStatus_FullMethodName = "/v1.System/PeersStatus"
+	System_Health_FullMethodName      = "/v1.System/Health"
 )
 
 // SystemClient is the client API for System service.
@@ -38,6 +39,8 @@ type SystemClient interface {
 	PeersList(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*PeersListResponse, error)
 	// PeersInfo returns the info of a peer
 	PeersStatus(ctx context.Context, in *PeersStatusRequest, opts ...grpc.CallOption) (*Peer, error)
+	// Check health
+	Health(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthResponse, error)
 }
 
 type systemClient struct {
@@ -88,6 +91,16 @@ func (c *systemClient) PeersStatus(ctx context.Context, in *PeersStatusRequest, 
 	return out, nil
 }
 
+func (c *systemClient) Health(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HealthResponse)
+	err := c.cc.Invoke(ctx, System_Health_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SystemServer is the server API for System service.
 // All implementations must embed UnimplementedSystemServer
 // for forward compatibility.
@@ -100,6 +113,8 @@ type SystemServer interface {
 	PeersList(context.Context, *emptypb.Empty) (*PeersListResponse, error)
 	// PeersInfo returns the info of a peer
 	PeersStatus(context.Context, *PeersStatusRequest) (*Peer, error)
+	// Check health
+	Health(context.Context, *emptypb.Empty) (*HealthResponse, error)
 	mustEmbedUnimplementedSystemServer()
 }
 
@@ -121,6 +136,9 @@ func (UnimplementedSystemServer) PeersList(context.Context, *emptypb.Empty) (*Pe
 }
 func (UnimplementedSystemServer) PeersStatus(context.Context, *PeersStatusRequest) (*Peer, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method PeersStatus not implemented")
+}
+func (UnimplementedSystemServer) Health(context.Context, *emptypb.Empty) (*HealthResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Health not implemented")
 }
 func (UnimplementedSystemServer) mustEmbedUnimplementedSystemServer() {}
 func (UnimplementedSystemServer) testEmbeddedByValue()                {}
@@ -215,6 +233,24 @@ func _System_PeersStatus_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _System_Health_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(emptypb.Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SystemServer).Health(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: System_Health_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SystemServer).Health(ctx, req.(*emptypb.Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // System_ServiceDesc is the grpc.ServiceDesc for System service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -237,6 +273,10 @@ var System_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PeersStatus",
 			Handler:    _System_PeersStatus_Handler,
+		},
+		{
+			MethodName: "Health",
+			Handler:    _System_Health_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -11,7 +11,6 @@ import (
 
 	"event-pool/chain"
 	db2 "event-pool/internal/db"
-	"event-pool/jsonrpc"
 	"event-pool/network"
 	"event-pool/prisma/db"
 	"event-pool/secrets"
@@ -35,9 +34,6 @@ type Server struct {
 
 	// state executor
 	//executor *state.Executor
-
-	// jsonrpc stack
-	jsonrpcServer *jsonrpc.JSONRPC
 
 	// system grpc server
 	grpcServer *grpc.Server
@@ -145,11 +141,6 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, err
 	}
 
-	// setup and start jsonrpc server
-	if err := m.setupJSONRPC(); err != nil {
-		return nil, err
-	}
-
 	return m, nil
 }
 
@@ -211,27 +202,6 @@ func (j *jsonRPCHub) GetPeers() int {
 }
 
 // SETUP //
-
-// setupJSONRCP sets up the JSONRPC server, using the set configuration
-func (s *Server) setupJSONRPC() error {
-	hub := &jsonRPCHub{
-		Server: s.network,
-	}
-
-	conf := &jsonrpc.Config{
-		Store: hub,
-		Addr:  s.config.JSONRPC.JSONRPCAddr,
-	}
-
-	srv, err := jsonrpc.NewJSONRPC(s.logger, conf)
-	if err != nil {
-		return err
-	}
-
-	s.jsonrpcServer = srv
-
-	return nil
-}
 
 // setupGRPC sets up the grpc server and listens on tcp
 func (s *Server) setupGRPC() error {
@@ -300,7 +270,7 @@ func (s *Server) startPrometheusServer(listenAddr *net.TCPAddr) *http.Server {
 	}
 
 	go func() {
-		s.logger.Info("Prometheus server started", "addr=", listenAddr.String())
+		s.logger.Infow("Prometheus server started", "addr=", listenAddr.String())
 
 		if err := srv.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("Prometheus HTTP server ListenAndServe", "err", err)

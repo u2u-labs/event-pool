@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"event-pool/crypto"
-	"event-pool/helper/hex"
 	"event-pool/network"
 	"event-pool/network/common"
 	"event-pool/secrets"
@@ -73,32 +72,6 @@ func writePriKeyOutputToFile(key string) error {
 	return nil
 }
 
-func InitBLSValidatorKey(secretsManager secrets.SecretsManager) ([]byte, error) {
-	if secretsManager.HasSecret(secrets.ValidatorBLSKey) {
-		return nil, fmt.Errorf(`secrets "%s" has been already initialized`, secrets.ValidatorBLSKey)
-	}
-
-	blsSecretKey, blsSecretKeyEncoded, err := crypto.GenerateAndEncodeBLSSecretKey()
-	if err != nil {
-		return nil, err
-	}
-
-	// Write the validator private key to the secrets manager storage
-	if setErr := secretsManager.SetSecret(
-		secrets.ValidatorBLSKey,
-		blsSecretKeyEncoded,
-	); setErr != nil {
-		return nil, setErr
-	}
-
-	pubkeyBytes, err := crypto.BLSSecretKeyToPubkeyBytes(blsSecretKey)
-	if err != nil {
-		return nil, err
-	}
-
-	return pubkeyBytes, nil
-}
-
 func InitNetworkingPrivateKey(secretsManager secrets.SecretsManager) (libp2pCrypto.PrivKey, error) {
 	if secretsManager.HasSecret(secrets.NetworkKey) {
 		return nil, fmt.Errorf(`secrets "%s" has been already initialized`, secrets.NetworkKey)
@@ -138,30 +111,6 @@ func LoadValidatorAddress(secretsManager secrets.SecretsManager) (types.Address,
 	}
 
 	return crypto.PubKeyToAddress(&privateKey.PublicKey), nil
-}
-
-// LoadValidatorAddress loads BLS key by SecretsManager and returns BLS Public Key
-func LoadBLSPublicKey(secretsManager secrets.SecretsManager) (string, error) {
-	if !secretsManager.HasSecret(secrets.ValidatorBLSKey) {
-		return "", nil
-	}
-
-	encodedKey, err := secretsManager.GetSecret(secrets.ValidatorBLSKey)
-	if err != nil {
-		return "", err
-	}
-
-	secretKey, err := crypto.BytesToBLSSecretKey(encodedKey)
-	if err != nil {
-		return "", err
-	}
-
-	pubkeyBytes, err := crypto.BLSSecretKeyToPubkeyBytes(secretKey)
-	if err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToHex(pubkeyBytes), nil
 }
 
 // LoadNodeID loads Libp2p key by SecretsManager and returns Node ID

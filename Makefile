@@ -11,4 +11,9 @@ clean:
 run:
 	go build -ldflags -w
 	chmod +x event-pool
-	./event-pool server --data-dir ./data/tmp --config config.yaml
+	./event-pool server --config config.yaml
+
+init:
+	go build -ldflags -w
+	chmod +x event-pool
+	./event-pool secrets init --data-dir ./data/temp

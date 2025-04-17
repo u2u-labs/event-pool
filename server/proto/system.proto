@@ -18,6 +18,9 @@ service System {
 
   // PeersInfo returns the info of a peer
   rpc PeersStatus(PeersStatusRequest) returns (Peer);
+
+  // Check health
+  rpc Health(google.protobuf.Empty) returns (HealthResponse);
 }
 
 message ServerStatus {
@@ -52,4 +55,9 @@ message BlockByNumberRequest {
 
 message BlockResponse {
   bytes data = 1;
+}
+
+message HealthResponse {
+  repeated int64 chain_ids = 1;
+  uint64 block_height = 2;
 }
