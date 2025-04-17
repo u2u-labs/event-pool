@@ -33,23 +33,23 @@ services:
       timeout: 5s
       retries: 5
 
-  mqtt:
-    image: eclipse-mosquitto:latest
-    container_name: event-emitter-mqtt
-    restart: always
-    ports:
-      - "1883:1883"
-      - "9001:9001"
-    volumes:
-      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-      - ../mqtt_data:/mosquitto/data
-      - ../mqtt_log:/mosquitto/log
-    command: 'mosquitto -c /mosquitto/config/mosquitto.conf'
-    logging:
-      driver: "json-file"
-      options:
-        max-size: 300m
-        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+  # mqtt:
+  #   image: eclipse-mosquitto:latest
+  #   container_name: event-emitter-mqtt
+  #   restart: always
+  #   ports:
+  #     - "1883:1883"
+  #     - "9001:9001"
+  #   volumes:
+  #     - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
+  #     - ../mqtt_data:/mosquitto/data
+  #     - ../mqtt_log:/mosquitto/log
+  #   command: 'mosquitto -c /mosquitto/config/mosquitto.conf'
+  #   logging:
+  #     driver: "json-file"
+  #     options:
+  #       max-size: 300m
+  #       tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
   api:
     build:
