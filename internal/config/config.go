@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -14,6 +15,7 @@ type Config struct {
 	Ethereum EthereumConfig `mapstructure:"ethereum"`
 	MQTT     MQTTConfig     `mapstructure:"mqtt"`
 	Asynq    AsynqConfig    `mapstructure:"asynq"`
+	Node     NodeConfig     `mapstructure:"node"`
 }
 
 type ServerConfig struct {
@@ -56,13 +58,20 @@ type AsynqConfig struct {
 	Concurrency int    `mapstructure:"concurrency"`
 }
 
+type NodeConfig struct {
+	PrivateKeyPath string   `mapstructure:"private_key_path"`
+	WhitelistPaths []string `mapstructure:"whitelist_paths"`
+}
+
 var cfg *Config
 
 func Load() (*Config, error) {
+	godotenv.Load()
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
+	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
 		return nil, fmt.Errorf("error reading config file: %w", err)

@@ -2,3 +2,10 @@
 vendor
 .env
 test
+event-pool
+.idea
+.vscode
+
+data/**
+!data/temp/
+!data/temp/**

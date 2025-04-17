@@ -1,16 +1,17 @@
 package db
 
 import (
-	"event-pool/prisma/db"
 	"fmt"
 	"log"
+
+	"event-pool/prisma/db"
 	// prisma "github.com/steebchen/prisma-client-go"
 )
 
 // NewClient creates a new Prisma client
-func NewClient() (*db.PrismaClient, error) {
+func NewClient(options ...func(config *db.PrismaConfig)) (*db.PrismaClient, error) {
 	// Set up Prisma client
-	client := db.NewClient()
+	client := db.NewClient(options...)
 
 	// Connect to the database
 	if err := client.Connect(); err != nil {

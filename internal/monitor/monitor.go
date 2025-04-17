@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
+	pb "event-pool/internal/proto"
 	"event-pool/pkg/ethereum"
-	"event-pool/pkg/mqtt"
+	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -19,7 +20,7 @@ import (
 type Monitor struct {
 	ethClients         map[int]*ethereum.Client
 	db                 *db.PrismaClient
-	mqttServer         *mqtt.Server
+	grpcServer         *grpc.Server
 	mu                 sync.RWMutex
 	monitors           map[string]context.CancelFunc
 	running            bool
@@ -28,11 +29,11 @@ type Monitor struct {
 	readyForMonitoring map[string]bool
 }
 
-func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, mqttServer *mqtt.Server) *Monitor {
+func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, grpcServer *grpc.Server) *Monitor {
 	return &Monitor{
 		ethClients:         ethClients,
 		db:                 db,
-		mqttServer:         mqttServer,
+		grpcServer:         grpcServer,
 		monitors:           make(map[string]context.CancelFunc),
 		lastBlocks:         make(map[int]uint64),
 		backfilling:        make(map[string]bool),
@@ -319,16 +320,20 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 	if err != nil {
 		return fmt.Errorf("failed to find contract: %w", err)
 	}
-	// Broadcast event via MQTT
-	err = m.mqttServer.BroadcastEvent(
-		chainID,
+
+	// Create gRPC event
+	event := &pb.Event{
+		BlockNumber: int64(eventLog.BlockNumber),
+		TxHash:      eventLog.TxHash.Hex(),
+		Data:        decodedData.(string),
+	}
+
+	// Broadcast event via gRPC
+	err = m.grpcServer.BroadcastEvent(
+		int32(chainID),
 		address,
 		contract.EventName,
-		map[string]interface{}{
-			"blockNumber": eventLog.BlockNumber,
-			"txHash":      eventLog.TxHash.Hex(),
-			"data":        decodedData,
-		},
+		event,
 	)
 
 	if err != nil {

@@ -5,6 +5,8 @@ import (
 	"os"
 
 	"event-pool/cmd"
+	"event-pool/cmd/secrets"
+	"event-pool/cmd/server"
 
 	"github.com/spf13/cobra"
 )
@@ -23,7 +25,11 @@ var serveCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(serveCmd)
+	rootCmd.AddCommand(
+		serveCmd,
+		server.GetCommand(),
+		secrets.GetCommand(),
+	)
 }
 
 func main() {

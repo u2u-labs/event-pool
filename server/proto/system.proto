@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package v1;
+
+option go_package = "/server/proto";
+
+import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
+
+service System {
+  // GetInfo returns info about the client
+  rpc GetStatus(google.protobuf.Empty) returns (ServerStatus) {
+    option (google.api.http) = {
+      get: "/status"
+    };
+  };
+
+  // PeersAdd adds a new peer
+  rpc PeersAdd(PeersAddRequest) returns (PeersAddResponse) {
+    option (google.api.http) = {
+      post: "/peers"
+      body: "*"
+    };
+  };
+
+  // PeersList returns the list of peers
+  rpc PeersList(google.protobuf.Empty) returns (PeersListResponse) {
+    option (google.api.http) = {
+      get: "/peers"
+    };
+  };
+
+  // PeersInfo returns the info of a peer
+  rpc PeersStatus(PeersStatusRequest) returns (Peer) {
+    option (google.api.http) = {
+      get: "/peers/{id}"
+    };
+  };
+
+  // Check health
+  rpc Health(google.protobuf.Empty) returns (HealthResponse) {
+    option (google.api.http) = {
+      get: "/health"
+    };
+  };
+}
+
+message ServerStatus {
+  string p2pAddr = 1;
+}
+
+message Peer {
+  string id = 1;
+  repeated string protocols = 2;
+  repeated string addrs = 3;
+}
+
+message PeersAddRequest {
+  string id = 1;
+}
+
+message PeersAddResponse {
+  string message = 1;
+}
+
+message PeersStatusRequest {
+  string id = 1;
+}
+
+message PeersListResponse {
+  repeated Peer peers = 1;
+}
+
+message BlockByNumberRequest {
+  uint64 number = 1;
+}
+
+message BlockResponse {
+  bytes data = 1;
+}
+
+message HealthResponse {
+  repeated int64 chain_ids = 1;
+  uint64 block_height = 2;
+}

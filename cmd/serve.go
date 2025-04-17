@@ -13,8 +13,7 @@ import (
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
-	"event-pool/pkg/mqtt"
-
+	"event-pool/pkg/grpc"
 	"github.com/spf13/cobra"
 )
 
@@ -43,25 +42,11 @@ func RunServe(cmd *cobra.Command, args []string) error {
 		ethClients[chainID] = client
 	}
 
-	// Initialize MQTT server
-	mqttConfig := &mqtt.Config{
-		BrokerURL:      cfg.MQTT.BrokerURL,
-		ClientID:       cfg.MQTT.ClientID,
-		Username:       cfg.MQTT.Username,
-		Password:       cfg.MQTT.Password,
-		QoS:            cfg.MQTT.QoS,
-		CleanSession:   cfg.MQTT.CleanSession,
-		PingInterval:   cfg.MQTT.PingInterval,
-		ConnectTimeout: cfg.MQTT.ConnectTimeout,
-	}
-	mqttServer, err := mqtt.NewServer(mqttConfig)
-	if err != nil {
-		return fmt.Errorf("failed to initialize MQTT server: %w", err)
-	}
-	defer mqttServer.Close()
+	// Initialize gRPC server
+	grpcServer := grpc.NewServer()
 
 	// Initialize monitor
-	mon := monitor.NewMonitor(ethClients, dbClient, mqttServer)
+	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer)
 
 	// Initialize worker
 	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, mon)
