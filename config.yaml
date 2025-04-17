@@ -1,12 +1,13 @@
 server:
   port: 8080
   host: "0.0.0.0"
+  address: "http://127.0.0.1"
 
 database:
   url: "postgresql://postgres:postgres@postgres:5432/event_pool_1?schema=public"
 
 redis:
-  addr: "redis:6379"
+  addr: "localhost:6379"
   password: ""
   db: 0
 
@@ -19,16 +20,21 @@ ethereum:
       rpc_url: "https://rpc-mainnet.u2u.xyz"
       block_time: 1 # seconds
 
-mqtt:
-  broker_url: "tcp://mqtt:1883"
-  client_id: "event-pool-server"
-  username: ""
-  password: ""
-  qos: 1
-  clean_session: false
-  ping_interval: 30s
-  connect_timeout: 10s
+grpc:
+  port: 9090
 
 asynq:
-  redis_addr: "redis:6379"
+  redis_addr: "localhost:6379"
   concurrency: 10 
+
+consul:
+  id: "node3"
+  host: "localhost"
+  port: 8500
+  service_id: "blockchain-node"
+  health_check:
+    port: 8080
+    path: "/health"
+    interval: "10s"
+    timeout: "5s"
+  

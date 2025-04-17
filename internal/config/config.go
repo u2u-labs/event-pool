@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/spf13/viper"
 )
@@ -12,13 +11,15 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 	Redis    RedisConfig    `mapstructure:"redis"`
 	Ethereum EthereumConfig `mapstructure:"ethereum"`
-	MQTT     MQTTConfig     `mapstructure:"mqtt"`
+	GRPC     GRPCConfig     `mapstructure:"grpc"`
 	Asynq    AsynqConfig    `mapstructure:"asynq"`
+	Consul   ConsulConfig   `mapstructure:"consul"`
 }
 
 type ServerConfig struct {
-	Port int    `mapstructure:"port"`
-	Host string `mapstructure:"host"`
+	Port    int    `mapstructure:"port"`
+	Host    string `mapstructure:"host"`
+	Address string `mapstructure:"address"`
 }
 
 type DatabaseConfig struct {
@@ -40,20 +41,26 @@ type EthereumConfig struct {
 	Chains map[int]ChainConfig `mapstructure:"chains"`
 }
 
-type MQTTConfig struct {
-	BrokerURL      string        `mapstructure:"broker_url"`
-	ClientID       string        `mapstructure:"client_id"`
-	Username       string        `mapstructure:"username"`
-	Password       string        `mapstructure:"password"`
-	QoS            byte          `mapstructure:"qos"`
-	CleanSession   bool          `mapstructure:"clean_session"`
-	PingInterval   time.Duration `mapstructure:"ping_interval"`
-	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
+type GRPCConfig struct {
+	Port int `mapstructure:"port"`
 }
 
 type AsynqConfig struct {
 	RedisAddr   string `mapstructure:"redis_addr"`
 	Concurrency int    `mapstructure:"concurrency"`
+}
+
+type ConsulConfig struct {
+	ID          string `mapstructure:"id"`
+	Host        string `mapstructure:"host"`
+	Port        int    `mapstructure:"port"`
+	ServiceID   string `mapstructure:"service_id"`
+	HealthCheck struct {
+		Port     int    `mapstructure:"port"`
+		Path     string `mapstructure:"path"`
+		Interval string `mapstructure:"interval"`
+		Timeout  string `mapstructure:"timeout"`
+	} `mapstructure:"health_check"`
 }
 
 var cfg *Config
@@ -68,8 +75,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("error reading config file: %w", err)
 	}
 
-	cfg = &Config{}
-	if err := viper.Unmarshal(cfg); err != nil {
+	if err := viper.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
@@ -78,4 +84,14 @@ func Load() (*Config, error) {
 
 func Get() *Config {
 	return cfg
+}
+
+// GetConsulAddr returns the Consul address in the format host:port
+func (c *Config) GetConsulAddr() string {
+	return fmt.Sprintf("%s:%d", c.Consul.Host, c.Consul.Port)
+}
+
+// GetServiceAddr returns the service address in the format host:port
+func (c *Config) GetServiceAddr() string {
+	return fmt.Sprintf("%s:%d", c.Server.Host, c.Server.Port)
 }
