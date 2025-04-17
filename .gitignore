@@ -5,4 +5,7 @@ test
 event-pool
 .idea
 .vscode
-data
+
+data/**
+!data/temp/
+!data/temp/**
