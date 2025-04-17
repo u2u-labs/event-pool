@@ -133,6 +133,10 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	// setup and start grpc server
+	if err := m.setupHTTP(); err != nil {
+		return nil, err
+	}
+
 	if err := m.setupGRPC(); err != nil {
 		return nil, err
 	}
@@ -202,6 +206,35 @@ func (j *jsonRPCHub) GetPeers() int {
 }
 
 // SETUP //
+
+// setupHTTP sets up the http server and listens on tcp
+func (s *Server) setupHTTP() error {
+	s.logger.Info("http server started", "addr", s.config.JSONRPC.JSONRPCAddr.String())
+	lis, err := net.Listen("tcp", s.config.JSONRPC.JSONRPCAddr.String())
+	if err != nil {
+		return err
+	}
+
+	mux := http.NewServeMux()
+
+	srv := http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 60 * time.Second,
+	}
+
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	go func() {
+		if err = srv.Serve(lis); err != nil {
+			s.logger.Errorw("closed http connection", "err", err)
+		}
+	}()
+
+	return nil
+}
 
 // setupGRPC sets up the grpc server and listens on tcp
 func (s *Server) setupGRPC() error {

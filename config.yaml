@@ -44,4 +44,5 @@ node_chain:
   bootnodes:
     - "/ip4/127.0.0.1/tcp/10006/p2p/16Uiu2HAkwTeJQzMwzSgLDnifn71B4c4DQaKbLSvGAAa9vMbSR2h6"
 grpc_addr: :10000
+jsonrpc_addr: :10002
 data_dir: ./data/temp
