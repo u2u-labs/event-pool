@@ -16,11 +16,13 @@ import (
 	"event-pool/secrets"
 	"event-pool/server/proto"
 	"github.com/ethereum/go-ethereum/core/txpool"
+	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/balancer/grpclb/state"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Server is the central manager of the blockchain client
@@ -88,7 +90,7 @@ func NewServer(config *Config) (*Server, error) {
 		logger:     logger.Named("server"),
 		config:     config,
 		chain:      config.Chain,
-		grpcServer: grpc.NewServer(),
+		grpcServer: grpc.NewServer(grpc.UnaryInterceptor(loggerInterceptor(logger.Named("grpc_server")))),
 		db:         dbClient,
 	}
 
@@ -215,17 +217,28 @@ func (s *Server) setupHTTP() error {
 		return err
 	}
 
-	mux := http.NewServeMux()
+	//mux := http.NewServeMux()
+	gwMux := runtime.NewServeMux()
 
-	srv := http.Server{
-		Handler:           mux,
-		ReadHeaderTimeout: 60 * time.Second,
+	// Register your gRPC Gateway handler (System service)
+	err = proto.RegisterSystemHandlerFromEndpoint(
+		context.Background(),
+		gwMux,
+		s.config.GRPCAddr.String(),
+		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())},
+	)
+	if err != nil {
+		return err
 	}
 
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
-	})
+	// Optionally wrap with custom routes like /health
+	httpMux := http.NewServeMux()
+	httpMux.Handle("/", gwMux)
+
+	srv := &http.Server{
+		Handler:           httpMux,
+		ReadHeaderTimeout: 60 * time.Second,
+	}
 
 	go func() {
 		if err = srv.Serve(lis); err != nil {
@@ -311,4 +324,26 @@ func (s *Server) startPrometheusServer(listenAddr *net.TCPAddr) *http.Server {
 	}()
 
 	return srv
+}
+
+func loggerInterceptor(logger *zap.SugaredLogger) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req any,
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (interface{}, error) {
+		start := time.Now()
+
+		resp, err := handler(ctx, req)
+		duration := time.Since(start)
+
+		logger.Infow("gRPC call",
+			"method", info.FullMethod,
+			"duration", duration,
+			"error", err,
+		)
+
+		return resp, err
+	}
 }

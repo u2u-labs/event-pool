@@ -12,7 +12,7 @@ import (
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
-	"event-pool/pkg/mqtt"
+	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
 )
 
@@ -20,7 +20,7 @@ type Server struct {
 	config     *config.Config
 	db         *db.PrismaClient
 	worker     *worker.Worker
-	mqttServer *mqtt.Server
+	grpcServer *grpc.Server
 	ethClients map[int]*ethereum.Client
 	monitor    *monitor.Monitor
 }
@@ -47,31 +47,15 @@ func (s *Server) GetActiveContracts(ctx context.Context) ([]db.ContractModel, er
 }
 
 func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client) *Server {
-	// Create MQTT server
-	mqttConfig := &mqtt.Config{
-		BrokerURL:      config.MQTT.BrokerURL,
-		ClientID:       config.MQTT.ClientID,
-		Username:       config.MQTT.Username,
-		Password:       config.MQTT.Password,
-		QoS:            config.MQTT.QoS,
-		CleanSession:   config.MQTT.CleanSession,
-		PingInterval:   config.MQTT.PingInterval,
-		ConnectTimeout: config.MQTT.ConnectTimeout,
-	}
-	mqttServer, err := mqtt.NewServer(mqttConfig)
-	if err != nil {
-		log.Printf("Failed to initialize MQTT server: %v", err)
-		return nil
-	}
-
+	grpcServer := grpc.NewServer()
 	// Create monitor
-	mon := monitor.NewMonitor(ethClients, db, mqttServer)
+	mon := monitor.NewMonitor(ethClients, db, grpcServer)
 
 	return &Server{
 		config:     config,
 		db:         db,
 		worker:     worker,
-		mqttServer: mqttServer,
+		grpcServer: grpcServer,
 		ethClients: ethClients,
 		monitor:    mon,
 	}
@@ -91,9 +75,9 @@ func (s *Server) Stop() {
 		s.monitor.Stop()
 		log.Println("Monitor stopped")
 	}
-	if s.mqttServer != nil {
-		s.mqttServer.Close()
-		log.Println("MQTT server stopped")
+	if s.grpcServer != nil {
+		s.grpcServer.Stop()
+		log.Println("GRPC server stopped")
 	}
 }
 
@@ -177,7 +161,7 @@ func (s *Server) Start() error {
 		}
 
 		// Register the topic for tracking
-		s.mqttServer.RegisterTopic(req.ChainID, req.ContractAddr, req.EventSignature)
+		//s.grpcServer.RegisterTopic(req.ChainID, req.ContractAddr, req.EventSignature)
 
 		w.WriteHeader(http.StatusOK)
 		json.NewEncoder(w).Encode(map[string]string{

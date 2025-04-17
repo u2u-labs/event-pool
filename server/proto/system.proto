@@ -5,22 +5,44 @@ package v1;
 option go_package = "/server/proto";
 
 import "google/protobuf/empty.proto";
+import "google/api/annotations.proto";
 
 service System {
   // GetInfo returns info about the client
-  rpc GetStatus(google.protobuf.Empty) returns (ServerStatus);
+  rpc GetStatus(google.protobuf.Empty) returns (ServerStatus) {
+    option (google.api.http) = {
+      get: "/status"
+    };
+  };
 
   // PeersAdd adds a new peer
-  rpc PeersAdd(PeersAddRequest) returns (PeersAddResponse);
+  rpc PeersAdd(PeersAddRequest) returns (PeersAddResponse) {
+    option (google.api.http) = {
+      post: "/peers"
+      body: "*"
+    };
+  };
 
   // PeersList returns the list of peers
-  rpc PeersList(google.protobuf.Empty) returns (PeersListResponse);
+  rpc PeersList(google.protobuf.Empty) returns (PeersListResponse) {
+    option (google.api.http) = {
+      get: "/peers"
+    };
+  };
 
   // PeersInfo returns the info of a peer
-  rpc PeersStatus(PeersStatusRequest) returns (Peer);
+  rpc PeersStatus(PeersStatusRequest) returns (Peer) {
+    option (google.api.http) = {
+      get: "/peers/{id}"
+    };
+  };
 
   // Check health
-  rpc Health(google.protobuf.Empty) returns (HealthResponse);
+  rpc Health(google.protobuf.Empty) returns (HealthResponse) {
+    option (google.api.http) = {
+      get: "/health"
+    };
+  };
 }
 
 message ServerStatus {
