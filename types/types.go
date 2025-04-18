@@ -36,11 +36,6 @@ type Address [AddressLength]byte
 
 const (
 	Empty Status = iota
-	Stake
-	Unstake
-	Suspend
-	Ban
-	Pause
 )
 
 func min(i, j int) int {

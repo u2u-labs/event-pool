@@ -211,7 +211,7 @@ func (j *jsonRPCHub) GetPeers() int {
 
 // setupHTTP sets up the http server and listens on tcp
 func (s *Server) setupHTTP() error {
-	s.logger.Info("http server started", "addr", s.config.JSONRPC.JSONRPCAddr.String())
+	s.logger.Infow("http server started", "addr", s.config.JSONRPC.JSONRPCAddr.String())
 	lis, err := net.Listen("tcp", s.config.JSONRPC.JSONRPCAddr.String())
 	if err != nil {
 		return err
