@@ -15,6 +15,7 @@ type Header struct {
 	ParentHash Hash                 `json:"parentHash"`
 	Logs       []*types.Log         `json:"logs"`
 	Filter     ethereum.FilterQuery `json:"filter"`
+	Creator    Address              `json:"creator"`
 }
 
 // headerJSON represents a block header used for json calls
@@ -74,6 +75,10 @@ func (h *Header) Copy() *Header {
 	return newHeader
 }
 
+func (h *Header) Number() uint64 {
+	return h.Filter.FromBlock.Uint64()
+}
+
 type Block struct {
 	Header *Header
 
@@ -111,4 +116,8 @@ func (b *Block) String() string {
 	str := fmt.Sprintf(`Block(#%v):`, b.Header.Filter.FromBlock)
 
 	return str
+}
+
+func (b *Block) Number() uint64 {
+	return b.Header.Number()
 }

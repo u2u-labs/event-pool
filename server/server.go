@@ -15,13 +15,11 @@ import (
 	"event-pool/prisma/db"
 	"event-pool/secrets"
 	"event-pool/server/proto"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/grpclb/state"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
@@ -194,18 +192,7 @@ func (s *Server) setupSecretsManager() error {
 	return nil
 }
 
-type jsonRPCHub struct {
-	state state.State
-
-	*txpool.TxPool
-	*network.Server
-}
-
 // HELPER + WRAPPER METHODS //
-
-func (j *jsonRPCHub) GetPeers() int {
-	return len(j.Server.Peers())
-}
 
 // SETUP //
 

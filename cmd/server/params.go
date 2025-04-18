@@ -63,9 +63,8 @@ type serverParams struct {
 	grpcAddress       *net.TCPAddr
 	jsonRPCAddress    *net.TCPAddr
 
-	blockGasTarget uint64
-	devInterval    uint64
-	isDevMode      bool
+	devInterval uint64
+	isDevMode   bool
 
 	corsAllowedOrigins []string
 
