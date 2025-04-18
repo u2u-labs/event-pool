@@ -14,6 +14,7 @@ import (
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
+
 	"github.com/spf13/cobra"
 )
 
@@ -43,7 +44,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize gRPC server
-	grpcServer := grpc.NewServer()
+	grpcServer := grpc.NewServer(dbClient)
 
 	// Initialize monitor
 	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer)
@@ -57,7 +58,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Initialize API server
-	server := api.NewServer(cfg, dbClient, worker, ethClients)
+	server := api.NewServer(cfg, dbClient, worker, ethClients, grpcServer, mon)
 	go func() {
 		if err := server.Start(); err != nil {
 			log.Printf("Server error: %v", err)
