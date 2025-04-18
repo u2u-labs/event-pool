@@ -46,10 +46,10 @@ func (s *Server) GetActiveContracts(ctx context.Context) ([]db.ContractModel, er
 	return s.db.Contract.FindMany().Exec(ctx)
 }
 
-func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client) *Server {
-	grpcServer := grpc.NewServer()
+func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor) *Server {
+	// grpcServer := grpc.NewServer()
 	// Create monitor
-	mon := monitor.NewMonitor(ethClients, db, grpcServer)
+	// mon := monitor.NewMonitor(ethClients, db, grpcServer)
 
 	return &Server{
 		config:     config,

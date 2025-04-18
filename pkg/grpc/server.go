@@ -1,11 +1,15 @@
 package grpc
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
+	"time"
 
 	pb "event-pool/internal/proto"
+	"event-pool/prisma/db"
 
 	"google.golang.org/grpc"
 )
@@ -15,12 +19,14 @@ type Server struct {
 	mu          sync.RWMutex
 	subscribers map[string][]chan *pb.Event
 	grpcServer  *grpc.Server
+	db          *db.PrismaClient
 }
 
-func NewServer() *Server {
+func NewServer(db *db.PrismaClient) *Server {
 	return &Server{
 		subscribers: make(map[string][]chan *pb.Event),
 		grpcServer:  grpc.NewServer(),
+		db:          db,
 	}
 }
 
@@ -93,4 +99,82 @@ func (s *Server) BroadcastEvent(chainID int32, contractAddr string, eventSignatu
 	}
 
 	return nil
+}
+
+func (s *Server) GetEvents(ctx context.Context, req *pb.GetEventsRequest) (*pb.GetEventsResponse, error) {
+	if req.ContractAddress == "" {
+		return nil, fmt.Errorf("contractAddress is required")
+	}
+
+	take := 10
+	skip := 0
+	chainId := 39 // default chain ID
+
+	if req.ChainId != 0 {
+		chainId = int(req.ChainId)
+	}
+
+	if req.Take > 0 {
+		take = int(req.Take)
+	}
+
+	if req.Skip > 0 {
+		skip = int(req.Skip)
+	}
+
+	contract, err := s.db.Contract.FindFirst(
+		db.Contract.ChainID.Equals(chainId),
+		db.Contract.Address.Equals(strings.ToLower(req.ContractAddress)),
+	).Exec(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to find contract: %v", err)
+	}
+
+	if contract == nil {
+		return nil, fmt.Errorf("contract not found")
+	}
+
+	var filters []db.EventLogWhereParam
+	filters = append(filters, db.EventLog.ContractID.Equals(contract.ID))
+
+	if req.TxHash != "" {
+		filters = append(filters, db.EventLog.TxHash.Equals(strings.ToLower(req.TxHash)))
+	}
+
+	events, err := s.db.EventLog.FindMany(
+		filters...,
+	).With(
+		db.EventLog.Contract.Fetch(),
+	).OrderBy(
+		db.EventLog.BlockNumber.Order(db.SortOrderDesc),
+	).Skip(skip).Take(take).Exec(ctx)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events: %v", err)
+	}
+
+	response := &pb.GetEventsResponse{
+		Data: make([]*pb.EventData, 0, len(events)),
+		Pagination: &pb.Pagination{
+			Skip: int32(skip),
+			Take: int32(take),
+		},
+	}
+
+	for _, event := range events {
+		contract := event.Contract()
+		eventData := &pb.EventData{
+			Id:              event.ID,
+			ContractAddress: contract.Address,
+			BlockNumber:     int64(event.BlockNumber),
+			TxHash:          event.TxHash,
+			LogIndex:        int32(event.LogIndex),
+			Data:            event.Data,
+			CreatedAt:       event.CreatedAt.Format(time.RFC3339),
+		}
+		response.Data = append(response.Data, eventData)
+	}
+
+	return response, nil
 }
