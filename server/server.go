@@ -18,6 +18,7 @@ import (
 	"event-pool/prisma/db"
 	"event-pool/secrets"
 	"event-pool/server/proto"
+	"event-pool/types"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -136,8 +137,12 @@ func NewServer(config *Config) (*Server, error) {
 		m.network = networkSvr
 	}
 
+	cfg := config.Chain.Clone()
+	cfg.NodeStorageAddress = types.StringToAddress(config.NodeStorageAddress)
+	cfg.RpcInfo = &chain.RpcInfo{}
+	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
 	// blockchain object
-	m.blockchain, err = blockchain.NewBlockchain(logger, config.Chain, nil, nil)
+	m.blockchain, err = blockchain.NewBlockchain(logger, cfg, nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -154,6 +159,11 @@ func NewServer(config *Config) (*Server, error) {
 	// This is done because consensus might use a custom Hash function so we need
 	// to wait for consensus because we do any block hashing like genesis
 	if err := m.blockchain.ComputeGenesis(); err != nil {
+		return nil, err
+	}
+
+	// initialize data in consensus layer
+	if err := m.consensus.Initialize(); err != nil {
 		return nil, err
 	}
 

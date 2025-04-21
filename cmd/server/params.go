@@ -72,8 +72,6 @@ type serverParams struct {
 
 	genesisConfig *chain.NodeChain
 	secretsConfig *secrets.SecretsManagerConfig
-
-	logFileLocation string
 }
 
 func (p *serverParams) isMaxPeersSet() bool {
@@ -133,9 +131,11 @@ func (p *serverParams) generateConfig() *server.Config {
 			MaxOutboundPeers: p.rawConfig.Network.MaxOutboundPeers,
 			Chain:            p.rawConfig.NodeChain,
 		},
-		DataDir:        p.rawConfig.DataDir,
-		SecretsManager: p.secretsConfig,
-		LogLevel:       lvl,
-		DbUrl:          p.rawConfig.Database.Url,
+		DataDir:            p.rawConfig.DataDir,
+		SecretsManager:     p.secretsConfig,
+		LogLevel:           lvl,
+		DbUrl:              p.rawConfig.Database.Url,
+		EthereumRpc:        p.rawConfig.EthereumRpc,
+		NodeStorageAddress: p.rawConfig.NodeStorageAddress,
 	}
 }

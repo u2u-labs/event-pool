@@ -32,6 +32,13 @@ type Config struct {
 
 	DbUrl     string
 	BlockTime uint64
+
+	EthereumRpc        *EthereumRpc
+	NodeStorageAddress string
+}
+
+type EthereumRpc struct {
+	Chains map[int]chain.RpcInfo `json:"chains" yaml:"chains"`
 }
 
 // Telemetry holds the config details for metric services

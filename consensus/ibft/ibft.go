@@ -67,11 +67,10 @@ type backendIBFT struct {
 	currentHooks      fork.HooksInterface   // Hooks at current sequence
 
 	// Configurations
-	config              *consensus.Config // Consensus configuration
-	epochSize           uint64
-	quorumSizeBlockNum  uint64
-	blockTime           time.Duration // Minimum block generation time in seconds
-	additionalEpochTime time.Duration // an additional time of block generation at epoch
+	config             *consensus.Config // Consensus configuration
+	epochSize          uint64
+	quorumSizeBlockNum uint64
+	blockTime          time.Duration // Minimum block generation time in seconds
 
 	// Channels
 	closeCh chan struct{} // Channel for closing
@@ -569,7 +568,7 @@ func getModulesFromForkManager(forkManager forkManagerInterface, height uint64) 
 }
 
 // verifyProposerSeal verifies ProposerSeal in IBFT Extra of header
-// and make sure signer belongs to validators and validators subset
+// and make sure signer belongs to validators
 func verifyProposerSeal(
 	header *types.Header,
 	signer signer.Signer,
@@ -581,7 +580,6 @@ func verifyProposerSeal(
 	}
 
 	proposerInVal := validators.Includes(proposer)
-	//color.Yellow("proposerInVal %v proposerInSubVal %v", proposerInVal, proposerInSubVal)
 	if !proposerInVal {
 		return ErrProposerSealByNonValidator
 	}

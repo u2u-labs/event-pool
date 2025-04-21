@@ -78,7 +78,7 @@ func (s *ContractValidatorStore) GetValidatorsByHeight(
 		return cachedValidators, nil
 	}
 
-	fetchedValidators, err := FetchValidators(validatorType, types.ZeroAddress)
+	fetchedValidators, err := FetchValidators(validatorType, types.ZeroAddress, s.blockchain.GetNodeStorageAddress(), s.blockchain.GetRpcClient())
 	if err != nil {
 		return nil, err
 	}

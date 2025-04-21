@@ -171,3 +171,7 @@ func (c *Client) RegisterEventABI(eventSignature string, eventABI string) error 
 func (c *Client) GetDecoder() *EventDecoder {
 	return c.decoder
 }
+
+func (c *Client) GetClient() *ethclient.Client {
+	return c.client
+}

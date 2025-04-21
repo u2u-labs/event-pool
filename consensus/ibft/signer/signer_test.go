@@ -787,7 +787,6 @@ func TestSignerVerifyParentCommittedSeals(t *testing.T) {
 		parentHeader            *types.Header
 		header                  *types.Header
 		parentValidators        validators.Validators
-		parentValidatorsSubset  validators.Validators
 		quorumSize              int
 		mustExist               bool
 		verifyCommittedSealsRes int

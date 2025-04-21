@@ -98,7 +98,7 @@ func (s *Set) Add(val Validator) error {
 	return nil
 }
 
-// Hash gets validator subset hash
+// Hash gets validator hash
 func (s *Set) Hash(objs []Validator) types.Hash {
 	hsh := sha3.NewLegacyKeccak256()
 	for _, ob := range objs {

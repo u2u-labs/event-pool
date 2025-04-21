@@ -95,7 +95,7 @@ func (i *backendIBFT) IsValidSender(msg *protoIBFT.IBFTMessage) bool {
 	validators, err := i.forkManager.GetValidators(msg.View.Height)
 	if err != nil {
 		if view := msg.View; i.IsEpochHeight(view.Height) && msg.Type == protoIBFT.MessageType_PREPREPARE {
-			i.logger.Debug("failed to run GetValidatorsSubset", "err", err, "h", view.Height, "round", view.Round,
+			i.logger.Debug("failed to run GetValidators", "err", err, "h", view.Height, "round", view.Round,
 				"type", msg.Type.String(), "from", types.BytesToAddress(msg.From))
 		}
 		return false

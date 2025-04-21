@@ -10,7 +10,9 @@ import (
 	"event-pool/blockchain/storage"
 	"event-pool/blockchain/storage/prismadb"
 	db2 "event-pool/internal/db"
+	"event-pool/pkg/ethereum"
 	"event-pool/validators"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"go.uber.org/zap"
 
 	"event-pool/chain"
@@ -29,7 +31,6 @@ var (
 	ErrInvalidParentHash    = errors.New("parent block hash is invalid")
 	ErrParentHashMismatch   = errors.New("invalid parent block hash")
 	ErrInvalidBlockSequence = errors.New("invalid block sequence")
-	ErrInvalidSha3Uncles    = errors.New("invalid block sha3 uncles root")
 	ErrInvalidTxRoot        = errors.New("invalid block transactions root")
 	ErrInvalidStateRoot     = errors.New("invalid block state root")
 )
@@ -51,6 +52,9 @@ type Blockchain struct {
 
 	stream *eventStream // Event subscriptions
 
+	rpcClient          *ethereum.Client
+	nodeStorageAddress types.Address
+
 	writeLock sync.Mutex
 }
 
@@ -58,12 +62,9 @@ type Verifier interface {
 	VerifyHeader(header *types.Header) error
 	ProcessHeaders(headers []*types.Header) error
 	GetBlockCreator(header *types.Header) (types.Address, error)
-	//PreCommitState(header *types.Header, txn *state.Transition) error
 }
 
 type Executor interface {
-	//ProcessBlock(parentRoot types.Hash, block *types.Block, blockCreator types.Address, isInserted bool) (*state.Transition, error)
-	//BeginTxn(parentRoot types.Hash, header *types.Header, coinbaseReceiver types.Address) (*state.Transition, error)
 }
 
 type BlockResult struct {
@@ -105,6 +106,13 @@ func NewBlockchain(
 	}
 
 	b.db = db
+
+	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", b.config.Params.ChainID, err)
+	}
+	b.rpcClient = client
+	b.nodeStorageAddress = config.NodeStorageAddress
 
 	if err := b.initCaches(defaultCacheSize); err != nil {
 		return nil, err
@@ -150,7 +158,7 @@ func (b *Blockchain) ComputeGenesis() error {
 			return fmt.Errorf("failed to get header with hash %s", head.String())
 		}
 
-		b.logger.Info(
+		b.logger.Infow(
 			"Current header",
 			"hash",
 			header.Hash.String(),
@@ -166,7 +174,7 @@ func (b *Blockchain) ComputeGenesis() error {
 		}
 	}
 
-	b.logger.Info("genesis", "hash", b.config.Genesis.StateRoot)
+	b.logger.Infow("genesis", "hash", b.config.Genesis.StateRoot)
 
 	return nil
 }
@@ -478,4 +486,12 @@ func (b *Blockchain) dispatchEvent(evnt *Event) {
 // Close closes the DB connection
 func (b *Blockchain) Close() error {
 	return b.db.Close()
+}
+
+func (b *Blockchain) GetRpcClient() bind.ContractBackend {
+	return b.rpcClient.GetClient()
+}
+
+func (b *Blockchain) GetNodeStorageAddress() types.Address {
+	return b.nodeStorageAddress
 }

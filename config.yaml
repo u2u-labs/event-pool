@@ -42,10 +42,9 @@ consul:
 node_chain:
   name: "event_pool"
   params:
-    config:
-      chain_ids: [2484, 39]
-      whitelists:
-        deployment: ["0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1", "0x2743eEC46576f76f47334569074242F3D9a90B44"]
+    chain_id: 2484
+    whitelists:
+      deployment: ["0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1", "0x2743eEC46576f76f47334569074242F3D9a90B44"]
   genesis:
     timestamp: 0x0
     number: 0x0
@@ -56,3 +55,4 @@ node_chain:
 grpc_addr: :10000
 jsonrpc_addr: :10002
 data_dir: ./data/temp
+node_storage_address: 0x5cac30faAE558F167FEB262Df07ABA5D1B50e474

@@ -19,9 +19,8 @@ import (
 type mockValidatorStore struct {
 	store.ValidatorStore
 
-	CloseFunc               func() error
-	GetValidatorsFunc       func(uint64, uint64, uint64) (validators.Validators, error)
-	GetValidatorsSubsetFunc func(uint64, uint64, uint64) (validators.Validators, error)
+	CloseFunc         func() error
+	GetValidatorsFunc func(uint64, uint64, uint64) (validators.Validators, error)
 }
 
 func (m *mockValidatorStore) Close() error {

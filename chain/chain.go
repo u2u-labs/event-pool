@@ -1,15 +1,24 @@
 package chain
 
 import (
+	"encoding/json"
+
 	"event-pool/types"
 )
 
 // NodeChain is the event catcher configuration
 type NodeChain struct {
-	Name      string   `json:"name" yaml:"name"`
-	Genesis   *Genesis `json:"genesis" yaml:"genesis"`
-	Params    *Params  `json:"params" yaml:"params"`
-	Bootnodes []string `json:"bootnodes,omitempty" yaml:"bootnodes"`
+	Name               string        `json:"name" yaml:"name"`
+	Genesis            *Genesis      `json:"genesis" yaml:"genesis"`
+	Params             *Params       `json:"params" yaml:"params"`
+	Bootnodes          []string      `json:"bootnodes,omitempty" yaml:"bootnodes"`
+	RpcInfo            *RpcInfo      `json:"rpc_info" yaml:"rpc_info"`
+	NodeStorageAddress types.Address `json:"node_storage_address" yaml:"node_storage_address"`
+}
+
+type RpcInfo struct {
+	RpcUrl    string `json:"rpc_url" yaml:"rpc_url"`
+	BlockTime int64  `json:"block_time" yaml:"block_time"`
 }
 
 // Genesis specifies state of a genesis block
@@ -39,4 +48,26 @@ func (g *Genesis) GenesisHeader() *types.Header {
 	}
 
 	return head
+}
+
+func (n *NodeChain) Clone() *NodeChain {
+	if n == nil {
+		return nil
+	}
+
+	// Marshal the original struct to JSON
+	jsonData, err := json.Marshal(n)
+	if err != nil {
+		return nil
+	}
+
+	clone := &NodeChain{}
+
+	// Unmarshal the JSON data into the new instance
+	err = json.Unmarshal(jsonData, clone)
+	if err != nil {
+		return nil
+	}
+
+	return clone
 }

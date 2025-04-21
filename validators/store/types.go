@@ -6,6 +6,7 @@ import (
 
 	"event-pool/types"
 	"event-pool/validators"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 
 type ValidatorTypeGetter func(uint64) (validators.ValidatorType, error)
@@ -35,6 +36,8 @@ type ValidatorStore interface {
 type HeaderGetter interface {
 	Header() *types.Header
 	GetHeaderByNumber(uint64) (*types.Header, bool)
+	GetRpcClient() bind.ContractBackend
+	GetNodeStorageAddress() types.Address
 }
 
 // Vote defines the vote structure

@@ -80,7 +80,7 @@ type Validators interface {
 	Includes(types.Address) bool
 	// Add a validator into collection
 	Add(Validator) error
-	// Get validator subset hash
+	// Get validator hash
 	Hash([]Validator) types.Hash
 	// Remove a validator from collection
 	Del(Validator) error
