@@ -288,7 +288,7 @@ func (i *backendIBFT) startConsensus() {
 		case <-syncerBlockCh:
 			if isValidator {
 				i.consensus.stopSequence()
-				i.logger.Info("canceled sequence", "sequence", pending)
+				i.logger.Debugw("canceled sequence", "sequence", pending)
 			}
 		case <-sequenceCh:
 		case <-i.closeCh:

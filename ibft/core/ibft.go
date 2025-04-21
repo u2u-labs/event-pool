@@ -297,13 +297,13 @@ func (i *IBFT) RunSequence(ctx context.Context, h uint64) {
 	i.messages.PruneByHeight(h)
 
 	i.log.Infow("sequence started", "height", h)
-	defer i.log.Infow("sequence done", "height", h)
+	defer i.log.Debugw("sequence done", "height", h)
 
 	for {
 		view := i.state.getView()
 
 		// Run preparation
-		i.log.Infow("round started", "round", view.Round)
+		i.log.Debugw("round started", "round", view.Round)
 
 		currentRound := view.Round
 		ctxRound, cancelRound := context.WithCancel(ctx)
@@ -330,19 +330,19 @@ func (i *IBFT) RunSequence(ctx context.Context, h uint64) {
 		select {
 		case ev := <-i.newProposal:
 			teardown()
-			i.log.Infow("received future proposal", "round", ev.round)
+			i.log.Debugw("received future proposal", "round", ev.round)
 
 			i.moveToNewRound(ev.round)
 			i.acceptProposal(ev.proposalMessage)
 			i.state.setRoundStarted(true)
 		case round := <-i.roundCertificate:
 			teardown()
-			i.log.Infow("received future RCC", "round", round)
+			i.log.Debugw("received future RCC", "round", round)
 
 			i.moveToNewRound(round)
 		case <-i.roundExpired:
 			teardown()
-			i.log.Infow("round timeout expired", "round", currentRound)
+			i.log.Debugw("round timeout expired", "round", currentRound)
 
 			newRound := currentRound + 1
 			// We still need this to debug or trace the log easier

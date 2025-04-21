@@ -169,7 +169,7 @@ func (i *backendIBFT) buildBlock(parent *types.Header) (*types.Block, error) {
 	// is sealed after all the committed seals
 	block.Header.ComputeHash()
 
-	i.logger.Info("build block", "number", header.Number)
+	i.logger.Infow("build block", "number", header.Number)
 
 	return block, nil
 }

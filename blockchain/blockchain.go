@@ -421,6 +421,21 @@ func (b *Blockchain) writeGenesisImpl(header *types.Header) error {
 	return nil
 }
 
+// writeCanonicalHeader writes the new header
+func (b *Blockchain) writeCanonicalHeader(event *Event, h *types.Header) error {
+	if err := b.db.WriteCanonicalHeader(h, big.NewInt(0)); err != nil {
+		return err
+	}
+
+	event.Type = EventHead
+	event.AddNewHeader(h)
+	event.SetDifficulty(big.NewInt(0))
+
+	b.setCurrentHeader(h)
+
+	return nil
+}
+
 // advanceHead Sets the passed in header as the new head of the chain
 func (b *Blockchain) advanceHead(newHeader *types.Header) (*big.Int, error) {
 	// Write the current head hash into storage
@@ -459,6 +474,9 @@ func (b *Blockchain) WriteBlock(block *types.Block, source string) error {
 
 	// Write the header to the chain
 	evnt := &Event{Source: source}
+	if err := b.writeHeaderImpl(evnt, header); err != nil {
+		return err
+	}
 
 	// update snapshot
 	if err := b.consensus.ProcessHeaders([]*types.Header{header}); err != nil {
@@ -481,6 +499,26 @@ func (b *Blockchain) WriteBlock(block *types.Block, source string) error {
 // dispatchEvent pushes a new event to the stream
 func (b *Blockchain) dispatchEvent(evnt *Event) {
 	b.stream.push(evnt)
+}
+
+// writeHeaderImpl writes a block and the data, assumes the genesis is already set
+func (b *Blockchain) writeHeaderImpl(evnt *Event, header *types.Header) error {
+	currentHeader := b.Header()
+
+	// Write the data
+	if header.ParentHash == currentHeader.Hash {
+		// Fast path to save the new canonical header
+		return b.writeCanonicalHeader(evnt, header)
+	}
+
+	if err := b.db.WriteHeader(header); err != nil {
+		return err
+	}
+
+	// Update the headers cache
+	b.headersCache.Add(header.Hash, header)
+
+	return nil
 }
 
 // Close closes the DB connection
