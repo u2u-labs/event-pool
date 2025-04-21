@@ -141,6 +141,7 @@ func NewServer(config *Config) (*Server, error) {
 	cfg.NodeStorageAddress = types.StringToAddress(config.NodeStorageAddress)
 	cfg.RpcInfo = &chain.RpcInfo{}
 	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
+	cfg.Genesis.ChainId = uint64(m.config.Chain.Params.ChainID)
 	// blockchain object
 	m.blockchain, err = blockchain.NewBlockchain(logger, cfg, nil, nil)
 	if err != nil {

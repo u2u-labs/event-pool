@@ -88,7 +88,7 @@ func (i *backendIBFT) InsertBlock(
 
 	i.updateMetrics(newBlock)
 
-	i.logger.Info(
+	i.logger.Infow(
 		"block committed",
 		"number", newBlock.Number(),
 		"hash", newBlock.Hash(),
@@ -97,7 +97,7 @@ func (i *backendIBFT) InsertBlock(
 	)
 
 	if err := i.currentHooks.PostInsertBlock(newBlock); err != nil {
-		i.logger.Error(
+		i.logger.Errorw(
 			"failed to call PostInsertBlock hook",
 			"height", newBlock.Number(),
 			"hash", newBlock.Hash(),
@@ -179,6 +179,7 @@ func (i *backendIBFT) NewHeader(parent *types.Header) (*types.Header, error) {
 	header := &types.Header{
 		ParentHash: parent.Hash,
 		Number:     parent.Number + 1,
+		ChainId:    parent.ChainId,
 	}
 
 	return header, nil

@@ -296,7 +296,7 @@ func (i *IBFT) RunSequence(ctx context.Context, h uint64) {
 	i.state.clear(h)
 	i.messages.PruneByHeight(h)
 
-	i.log.Infow("sequence started", "height", h)
+	i.log.Debugw("sequence started", "height", h)
 	defer i.log.Debugw("sequence done", "height", h)
 
 	for {
