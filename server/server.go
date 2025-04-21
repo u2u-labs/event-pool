@@ -9,7 +9,10 @@ import (
 	"path/filepath"
 	"time"
 
+	"event-pool/blockchain"
 	"event-pool/chain"
+	"event-pool/consensus"
+	"event-pool/consensus/ibft"
 	db2 "event-pool/internal/db"
 	"event-pool/network"
 	"event-pool/prisma/db"
@@ -28,9 +31,10 @@ type Server struct {
 	logger *zap.SugaredLogger
 	config *Config
 
-	//consensus consensus.Consensus
+	consensus consensus.Consensus
 
-	chain *chain.NodeChain
+	blockchain *blockchain.Blockchain
+	chain      *chain.NodeChain
 
 	// state executor
 	//executor *state.Executor
@@ -132,6 +136,27 @@ func NewServer(config *Config) (*Server, error) {
 		m.network = networkSvr
 	}
 
+	// blockchain object
+	m.blockchain, err = blockchain.NewBlockchain(logger, config.Chain, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	{
+		// Setup consensus
+		if err := m.setupConsensus(); err != nil {
+			return nil, err
+		}
+		m.blockchain.SetConsensus(m.consensus)
+	}
+
+	// after consensus is done, we can mine the genesis block in blockchain
+	// This is done because consensus might use a custom Hash function so we need
+	// to wait for consensus because we do any block hashing like genesis
+	if err := m.blockchain.ComputeGenesis(); err != nil {
+		return nil, err
+	}
+
 	// setup and start grpc server
 	if err := m.setupHTTP(); err != nil {
 		return nil, err
@@ -145,7 +170,43 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, err
 	}
 
+	// start consensus
+	if err := m.consensus.Start(); err != nil {
+		return nil, err
+	}
+
 	return m, nil
+}
+
+// setupConsensus sets up the consensus mechanism
+func (s *Server) setupConsensus() error {
+	config := &consensus.Config{
+		Params: s.config.Chain.Params,
+		Logger: s.logger.Named("consensus"),
+		Config: map[string]any{"type": "PoS"},
+	}
+
+	consensus, err := ibft.Factory(
+		&consensus.Params{
+			Context:        context.Background(),
+			Config:         config,
+			Network:        s.network,
+			Blockchain:     s.blockchain,
+			Grpc:           s.grpcServer,
+			Logger:         s.logger,
+			Metrics:        s.serverMetrics.consensus,
+			SecretsManager: s.secretsManager,
+			BlockTime:      s.config.BlockTime,
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	s.consensus = consensus
+
+	return nil
 }
 
 // setupSecretsManager sets up the secrets manager

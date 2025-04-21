@@ -1,13 +1,11 @@
 package blockchain
 
 import (
-	"math/big"
 	"sync"
 	"testing"
 	"time"
 
 	"event-pool/types"
-	"github.com/ethereum/go-ethereum"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,11 +18,7 @@ func TestSubscription(t *testing.T) {
 		caughtEventNum = uint64(0)
 		event          = &Event{
 			NewChain: []*types.Header{
-				{
-					Filter: ethereum.FilterQuery{
-						FromBlock: big.NewInt(int64(100)),
-					},
-				},
+				{Number: 1},
 			},
 		}
 
@@ -42,7 +36,7 @@ func TestSubscription(t *testing.T) {
 
 		select {
 		case ev := <-updateCh:
-			caughtEventNum = ev.NewChain[0].Number()
+			caughtEventNum = ev.NewChain[0].Number
 		case <-time.After(5 * time.Second):
 		}
 	}()
@@ -53,7 +47,7 @@ func TestSubscription(t *testing.T) {
 	// Wait for the event to be parsed
 	wg.Wait()
 
-	assert.Equal(t, event.NewChain[0].Number(), caughtEventNum)
+	assert.Equal(t, event.NewChain[0].Number, caughtEventNum)
 }
 
 func TestSubscription_BufferedChannel_MultipleSubscriptions(t *testing.T) {
@@ -100,9 +94,7 @@ func TestSubscription_BufferedChannel_MultipleSubscriptions(t *testing.T) {
 		e.push(&Event{
 			NewChain: []*types.Header{
 				{
-					Filter: ethereum.FilterQuery{
-						FromBlock: big.NewInt(int64(10)),
-					},
+					Number: 10,
 				},
 			},
 		})

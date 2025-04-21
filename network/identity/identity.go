@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"event-pool/helper/common"
 	"event-pool/network/event"
 	"event-pool/network/proto"
 	"github.com/libp2p/go-libp2p/core/network"
@@ -63,21 +62,21 @@ type IdentityService struct {
 	logger                 *zap.SugaredLogger // The IdentityService logger
 	baseServer             networkingServer   // The interface towards the base networking server
 
-	chainIDs []int64 // The chain IDs of the network it's working on
-	hostID   peer.ID // The base networking server's host peer ID
+	chainID int64   // The chain IDs of the network it's working on
+	hostID  peer.ID // The base networking server's host peer ID
 }
 
 // NewIdentityService returns a new instance of the IdentityService
 func NewIdentityService(
 	server networkingServer,
 	logger *zap.SugaredLogger,
-	chainIDs []int64,
+	chainID int64,
 	hostID peer.ID,
 ) *IdentityService {
 	return &IdentityService{
 		logger:     logger.Named("identity"),
 		baseServer: server,
-		chainIDs:   chainIDs,
+		chainID:    chainID,
 		hostID:     hostID,
 	}
 }
@@ -180,8 +179,9 @@ func (i *IdentityService) handleConnected(peerID peer.ID, direction network.Dire
 		return err
 	}
 
+	// TODO: for now, we don't support different chain id connections
 	// Validate that the peers are working on the same chain
-	if !common.HasCommonElement(i.chainIDs, resp.Chains) {
+	if i.chainID != resp.Chain {
 		return ErrInvalidChainID
 	}
 
@@ -212,7 +212,7 @@ func (i *IdentityService) constructStatus(peerID peer.ID) *proto.Status {
 		Metadata: map[string]string{
 			PeerID: i.hostID.String(),
 		},
-		Chains:        i.chainIDs,
+		Chain:         i.chainID,
 		TemporaryDial: i.baseServer.IsTemporaryDial(peerID),
 	}
 }

@@ -3,7 +3,6 @@ package network
 import (
 	"math/big"
 
-	common2 "event-pool/helper/common"
 	"event-pool/network/common"
 	peerEvent "event-pool/network/event"
 	"event-pool/network/grpc"
@@ -114,7 +113,7 @@ func (s *Server) setupIdentity() error {
 	identityService := identity.NewIdentityService(
 		s,
 		s.logger,
-		common2.IntSliceToInt64Slice(s.config.Chain.Params.ChainIDs),
+		int64(s.config.Chain.Params.ChainID),
 		s.host.ID(),
 	)
 

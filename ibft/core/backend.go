@@ -12,20 +12,20 @@ type MessageConstructor interface {
 		proposal []byte,
 		certificate *proto.RoundChangeCertificate,
 		view *proto.View,
-	) *proto.Message
+	) *proto.IBFTMessage
 
 	// BuildPrepareMessage builds a PREPARE message based on the passed in proposal
-	BuildPrepareMessage(proposalHash []byte, view *proto.View) *proto.Message
+	BuildPrepareMessage(proposalHash []byte, view *proto.View) *proto.IBFTMessage
 
 	// BuildCommitMessage builds a COMMIT message based on the passed in proposal
-	BuildCommitMessage(proposalHash []byte, view *proto.View) *proto.Message
+	BuildCommitMessage(proposalHash []byte, view *proto.View) *proto.IBFTMessage
 
 	// BuildRoundChangeMessage builds a ROUND_CHANGE message based on the passed in proposal
 	BuildRoundChangeMessage(
 		proposal []byte,
 		certificate *proto.PreparedCertificate,
 		view *proto.View,
-	) *proto.Message
+	) *proto.IBFTMessage
 }
 
 // Verifier defines the verifier interface
@@ -34,7 +34,7 @@ type Verifier interface {
 	IsValidBlock(block []byte) bool
 
 	// IsValidSender checks if signature is from sender
-	IsValidSender(msg *proto.Message) bool
+	IsValidSender(msg *proto.IBFTMessage) bool
 
 	// IsProposer checks if the passed in ID is the Proposer for current view (sequence, round)
 	IsProposer(id []byte, height, round uint64) bool
@@ -76,7 +76,4 @@ type Backend interface {
 	IsActiveValidator() bool
 
 	IsEpochHeight(height uint64) bool
-
-	// OnBeforeRoundStarts handle most of time-consuming logics
-	OnBeforeRoundStarts(view *proto.View)
 }

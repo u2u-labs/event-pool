@@ -20,9 +20,8 @@ const (
 )
 
 var (
-	ErrSignerNotFound                       = errors.New("signer not found")
-	ErrInvalidValidatorsTypeAssertion       = errors.New("invalid type assertion for Validators")
-	ErrInvalidValidatorsSubsetTypeAssertion = errors.New("invalid type assertion for Validators subset")
+	ErrSignerNotFound                 = errors.New("signer not found")
+	ErrInvalidValidatorsTypeAssertion = errors.New("invalid type assertion for Validators")
 )
 
 type ContractValidatorStore struct {
@@ -30,7 +29,6 @@ type ContractValidatorStore struct {
 
 	logger     *zap.SugaredLogger
 	blockchain store.HeaderGetter
-	executor   Executor
 
 	// LRU cache for the validators
 	validatorSetCache *lru.Cache
@@ -42,7 +40,6 @@ type Executor interface {
 func NewContractValidatorStore(
 	logger *zap.SugaredLogger,
 	blockchain store.HeaderGetter,
-	executor Executor,
 	validatorSetCacheSize int,
 ) (*ContractValidatorStore, error) {
 	var (
@@ -59,7 +56,6 @@ func NewContractValidatorStore(
 	return &ContractValidatorStore{
 		logger:            logger,
 		blockchain:        blockchain,
-		executor:          executor,
 		validatorSetCache: validatorsCache,
 	}, nil
 }

@@ -14,23 +14,23 @@ import (
 )
 
 type Logger interface {
-	Info(msg string, args ...interface{})
-	Debug(msg string, args ...interface{})
-	Error(msg string, args ...interface{})
+	Infow(msg string, args ...interface{})
+	Debugw(msg string, args ...interface{})
+	Errorw(msg string, args ...interface{})
 }
 
 type Messages interface {
 	// Messages modifiers //
-	AddMessage(message *proto.Message)
+	AddMessage(message *proto.IBFTMessage)
 	PruneByHeight(height uint64)
 
 	// Messages fetchers //
 	GetValidMessages(
 		view *proto.View,
 		messageType proto.MessageType,
-		isValid func(*proto.Message) bool,
-	) []*proto.Message
-	GetMostRoundChangeMessages(minRound, height uint64) []*proto.Message
+		isValid func(*proto.IBFTMessage) bool,
+	) []*proto.IBFTMessage
+	GetMostRoundChangeMessages(minRound, height uint64) []*proto.IBFTMessage
 
 	// Messages subscription handlers //
 	Subscribe(details messages.SubscriptionDetails) *messages.Subscription
@@ -178,7 +178,7 @@ func (i *IBFT) signalNewRCC(ctx context.Context, round uint64) {
 }
 
 type newProposalEvent struct {
-	proposalMessage *proto.Message
+	proposalMessage *proto.IBFTMessage
 	round           uint64
 }
 
@@ -296,16 +296,14 @@ func (i *IBFT) RunSequence(ctx context.Context, h uint64) {
 	i.state.clear(h)
 	i.messages.PruneByHeight(h)
 
-	i.log.Info("sequence started", "height", h)
-	defer i.log.Info("sequence done", "height", h)
+	i.log.Infow("sequence started", "height", h)
+	defer i.log.Infow("sequence done", "height", h)
 
 	for {
 		view := i.state.getView()
 
 		// Run preparation
-		i.backend.OnBeforeRoundStarts(view)
-
-		i.log.Info("round started", "round", view.Round)
+		i.log.Infow("round started", "round", view.Round)
 
 		currentRound := view.Round
 		ctxRound, cancelRound := context.WithCancel(ctx)
@@ -332,19 +330,19 @@ func (i *IBFT) RunSequence(ctx context.Context, h uint64) {
 		select {
 		case ev := <-i.newProposal:
 			teardown()
-			i.log.Info("received future proposal", "round", ev.round)
+			i.log.Infow("received future proposal", "round", ev.round)
 
 			i.moveToNewRound(ev.round)
 			i.acceptProposal(ev.proposalMessage)
 			i.state.setRoundStarted(true)
 		case round := <-i.roundCertificate:
 			teardown()
-			i.log.Info("received future RCC", "round", round)
+			i.log.Infow("received future RCC", "round", round)
 
 			i.moveToNewRound(round)
 		case <-i.roundExpired:
 			teardown()
-			i.log.Info("round timeout expired", "round", currentRound)
+			i.log.Infow("round timeout expired", "round", currentRound)
 
 			newRound := currentRound + 1
 			// We still need this to debug or trace the log easier
@@ -360,7 +358,7 @@ func (i *IBFT) RunSequence(ctx context.Context, h uint64) {
 			return
 		case <-ctx.Done():
 			teardown()
-			i.log.Debug("sequence cancelled")
+			i.log.Debugw("sequence cancelled")
 
 			return
 		}
@@ -382,7 +380,7 @@ func (i *IBFT) startRound(ctx context.Context) {
 	if view.Round > 0 && view.Height > 1 {
 		nextProposer := i.backend.CalcNextProposer(view.Height, view.Round)
 		if nextProposer == nil {
-			i.log.Error("unable to build proposal")
+			i.log.Errorw("unable to build proposal")
 
 			return
 		}
@@ -390,21 +388,21 @@ func (i *IBFT) startRound(ctx context.Context) {
 
 	// Check if any block needs to be proposed
 	if i.backend.IsProposer(id, view.Height, view.Round) {
-		i.log.Info("we are the proposer")
+		i.log.Infow("we are the proposer")
 
 		proposalMessage := i.buildProposal(ctx, view)
 		if proposalMessage == nil {
-			i.log.Error("unable to build proposal")
+			i.log.Errorw("unable to build proposal")
 
 			return
 		}
 
 		i.acceptProposal(proposalMessage)
-		i.log.Debug("block proposal accepted")
+		i.log.Debugw("block proposal accepted")
 
 		i.sendPreprepareMessage(proposalMessage)
 
-		i.log.Debug("pre-prepare message multicasted")
+		i.log.Debugw("pre-prepare message multicasted")
 	}
 
 	i.runStates(ctx)
@@ -458,7 +456,7 @@ func (i *IBFT) handleRoundChangeMessage(view *proto.View, quorum uint64) *proto.
 		round  = view.Round
 	)
 
-	isValidFn := func(msg *proto.Message) bool {
+	isValidFn := func(msg *proto.IBFTMessage) bool {
 		proposal := messages.ExtractLastPreparedProposedBlock(msg)
 		certificate := messages.ExtractLatestPC(msg)
 
@@ -555,8 +553,8 @@ func (i *IBFT) runStates(ctx context.Context) {
 
 // runNewRound runs the New Round IBFT state
 func (i *IBFT) runNewRound(ctx context.Context) error {
-	i.log.Debug("enter: new round state")
-	defer i.log.Debug("exit: new round state")
+	i.log.Debugw("enter: new round state")
+	defer i.log.Debugw("exit: new round state")
 
 	var (
 		// Grab the current view
@@ -597,7 +595,7 @@ func (i *IBFT) runNewRound(ctx context.Context) error {
 				// Prevent inactive validators from sending messages
 				i.sendPrepareMessage(view)
 			}
-			i.log.Debug("prepare message multicasted")
+			i.log.Debugw("prepare message multicasted")
 
 			// Move to the prepare state
 			// Redundant in this case because we changed the state once in acceptProposal
@@ -610,7 +608,7 @@ func (i *IBFT) runNewRound(ctx context.Context) error {
 
 // validateProposalCommon does common validations for each proposal, no
 // matter the round
-func (i *IBFT) validateProposalCommon(msg *proto.Message, view *proto.View) bool {
+func (i *IBFT) validateProposalCommon(msg *proto.IBFTMessage, view *proto.View) bool {
 	var (
 		height = view.Height
 		round  = view.Round
@@ -638,7 +636,7 @@ func (i *IBFT) validateProposalCommon(msg *proto.Message, view *proto.View) bool
 }
 
 // validateProposal0 validates the proposal for round 0
-func (i *IBFT) validateProposal0(msg *proto.Message, view *proto.View) bool {
+func (i *IBFT) validateProposal0(msg *proto.IBFTMessage, view *proto.View) bool {
 	var (
 		height = view.Height
 		round  = view.Round
@@ -663,7 +661,7 @@ func (i *IBFT) validateProposal0(msg *proto.Message, view *proto.View) bool {
 }
 
 // validateProposal validates a proposal for round > 0
-func (i *IBFT) validateProposal(msg *proto.Message, view *proto.View) bool {
+func (i *IBFT) validateProposal(msg *proto.IBFTMessage, view *proto.View) bool {
 	var (
 		height = view.Height
 		round  = view.Round
@@ -746,8 +744,10 @@ func (i *IBFT) validateProposal(msg *proto.Message, view *proto.View) bool {
 
 // handlePrePrepare parses the received proposal and performs
 // a transition to PREPARE state, if the proposal is valid
-func (i *IBFT) handlePrePrepare(view *proto.View) *proto.Message {
-	isValidPrePrepare := func(message *proto.Message) bool {
+// handlePrePrepare parses the received proposal and performs
+// a transition to PREPARE state, if the proposal is valid
+func (i *IBFT) handlePrePrepare(view *proto.View) *proto.IBFTMessage {
+	isValidPrePrepare := func(message *proto.IBFTMessage) bool {
 		if view.Round == 0 {
 			//	proposal must be for round 0
 			return i.validateProposal0(message, view)
@@ -771,8 +771,8 @@ func (i *IBFT) handlePrePrepare(view *proto.View) *proto.Message {
 
 // runPrepare runs the Prepare IBFT state
 func (i *IBFT) runPrepare(ctx context.Context) error {
-	i.log.Debug("enter: prepare state")
-	defer i.log.Debug("exit: prepare state")
+	i.log.Debugw("enter: prepare state")
+	defer i.log.Debugw("exit: prepare state")
 
 	var (
 		// Grab the current view
@@ -814,7 +814,7 @@ func (i *IBFT) runPrepare(ctx context.Context) error {
 // handlePrepare parses available prepare messages and performs
 // a transition to COMMIT state, if quorum was reached
 func (i *IBFT) handlePrepare(view *proto.View, quorum uint64) bool {
-	isValidPrepare := func(message *proto.Message) bool {
+	isValidPrepare := func(message *proto.IBFTMessage) bool {
 		// Verify that the proposal hash is valid
 		return i.backend.IsValidProposalHash(
 			i.state.getProposal(),
@@ -838,7 +838,7 @@ func (i *IBFT) handlePrepare(view *proto.View, quorum uint64) bool {
 		i.sendCommitMessage(view)
 	}
 
-	i.log.Debug("commit message multicasted")
+	i.log.Debugw("commit message multicasted")
 
 	i.state.finalizePrepare(
 		&proto.PreparedCertificate{
@@ -853,8 +853,8 @@ func (i *IBFT) handlePrepare(view *proto.View, quorum uint64) bool {
 
 // runCommit runs the Commit IBFT state
 func (i *IBFT) runCommit(ctx context.Context) error {
-	i.log.Debug("enter: commit state")
-	defer i.log.Debug("exit: commit state")
+	i.log.Debugw("enter: commit state")
+	defer i.log.Debugw("exit: commit state")
 
 	var (
 		// Grab the current view
@@ -896,7 +896,7 @@ func (i *IBFT) runCommit(ctx context.Context) error {
 // handleCommit parses available commit messages and performs
 // a transition to FIN state, if quorum was reached
 func (i *IBFT) handleCommit(view *proto.View, quorum uint64) bool {
-	isValidCommit := func(message *proto.Message) bool {
+	isValidCommit := func(message *proto.IBFTMessage) bool {
 		var (
 			proposalHash  = messages.ExtractCommitHash(message)
 			committedSeal = messages.ExtractCommittedSeal(message)
@@ -929,8 +929,8 @@ func (i *IBFT) handleCommit(view *proto.View, quorum uint64) bool {
 
 // runFin runs the fin state (block insertion)
 func (i *IBFT) runFin() {
-	i.log.Debug("enter: fin state")
-	defer i.log.Debug("exit: fin state")
+	i.log.Debugw("enter: fin state")
+	defer i.log.Debugw("exit: fin state")
 
 	// Insert the block to the node's underlying
 	// blockchain layer
@@ -956,7 +956,7 @@ func (i *IBFT) moveToNewRound(round uint64) {
 	i.state.changeState(newRound)
 }
 
-func (i *IBFT) buildProposal(ctx context.Context, view *proto.View) *proto.Message {
+func (i *IBFT) buildProposal(ctx context.Context, view *proto.View) *proto.IBFTMessage {
 	var (
 		height = view.Height
 		round  = view.Round
@@ -1024,14 +1024,14 @@ func (i *IBFT) buildProposal(ctx context.Context, view *proto.View) *proto.Messa
 }
 
 // acceptProposal accepts the proposal and moves the state
-func (i *IBFT) acceptProposal(proposalMessage *proto.Message) {
+func (i *IBFT) acceptProposal(proposalMessage *proto.IBFTMessage) {
 	//	accept newly proposed block and move to PREPARE state
 	i.state.setProposalMessage(proposalMessage)
 	i.state.changeState(prepare)
 }
 
 // AddMessage adds a new message to the IBFT message system
-func (i *IBFT) AddMessage(message *proto.Message) bool {
+func (i *IBFT) AddMessage(message *proto.IBFTMessage) bool {
 	// Make sure the message is present
 	if message == nil {
 		return false
@@ -1046,13 +1046,13 @@ func (i *IBFT) AddMessage(message *proto.Message) bool {
 }
 
 // isAcceptableMessage checks if the message can even be accepted
-func (i *IBFT) isAcceptableMessage(message *proto.Message) bool {
+func (i *IBFT) isAcceptableMessage(message *proto.IBFTMessage) bool {
 	//	Make sure the message sender is ok
 	if !i.backend.IsValidSender(message) {
 		return false
 	}
 	if message.Type == proto.MessageType_PREPREPARE && i.backend.IsEpochHeight(message.View.Height) {
-		i.log.Debug("isAcceptableMessage", "isValidSender", true, "height", message.View.Height,
+		i.log.Debugw("isAcceptableMessage", "isValidSender", true, "height", message.View.Height,
 			"from", fmt.Sprintf("0x%x", message.From))
 	}
 
@@ -1067,7 +1067,7 @@ func (i *IBFT) isAcceptableMessage(message *proto.Message) bool {
 		return false
 	}
 	if message.Type == proto.MessageType_PREPREPARE && i.backend.IsEpochHeight(message.View.Height) {
-		i.log.Debug("isAcceptableMessage", "isValidHeight", true, "height", message.View.Height,
+		i.log.Debugw("isAcceptableMessage", "isValidHeight", true, "height", message.View.Height,
 			"from", fmt.Sprintf("0x%x", message.From))
 	}
 
@@ -1078,14 +1078,14 @@ func (i *IBFT) isAcceptableMessage(message *proto.Message) bool {
 		}
 	}
 	if message.Type == proto.MessageType_PREPREPARE && i.backend.IsEpochHeight(message.View.Height) {
-		i.log.Debug("isAcceptableMessage", "isValidVersion", true, "height", message.View.Height,
+		i.log.Debugw("isAcceptableMessage", "isValidVersion", true, "height", message.View.Height,
 			"from", fmt.Sprintf("0x%x", message.From))
 	}
 
 	// Make sure the message round is >= the current state round
 	ok := message.View.Round >= i.state.getRound()
 	if message.Type == proto.MessageType_PREPREPARE && i.backend.IsEpochHeight(message.View.Height) {
-		i.log.Debug("isAcceptableMessage", "isValidRound", true, "height", message.View.Height,
+		i.log.Debugw("isAcceptableMessage", "isValidRound", true, "height", message.View.Height,
 			"from", fmt.Sprintf("0x%x", message.From))
 	}
 	return ok
@@ -1113,7 +1113,7 @@ func (i *IBFT) validPC(
 	}
 
 	allMessages := append(
-		[]*proto.Message{certificate.ProposalMessage},
+		[]*proto.IBFTMessage{certificate.ProposalMessage},
 		certificate.PrepareMessages...,
 	)
 
@@ -1173,7 +1173,7 @@ func (i *IBFT) validPC(
 }
 
 // sendPreprepareMessage sends out the preprepare message
-func (i *IBFT) sendPreprepareMessage(message *proto.Message) {
+func (i *IBFT) sendPreprepareMessage(message *proto.IBFTMessage) {
 	i.transport.Multicast(message)
 }
 

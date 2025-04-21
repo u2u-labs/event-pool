@@ -63,7 +63,7 @@ func NewMessages() *Messages {
 }
 
 // AddMessage adds a new message to the message queue
-func (ms *Messages) AddMessage(message *proto.Message) {
+func (ms *Messages) AddMessage(message *proto.IBFTMessage) {
 	mux := ms.muxMap[message.Type]
 	mux.Lock()
 	defer mux.Unlock()
@@ -183,13 +183,13 @@ func (ms *Messages) getProtoMessages(
 func (ms *Messages) GetValidMessages(
 	view *proto.View,
 	messageType proto.MessageType,
-	isValid func(message *proto.Message) bool,
-) []*proto.Message {
+	isValid func(message *proto.IBFTMessage) bool,
+) []*proto.IBFTMessage {
 	mux := ms.muxMap[messageType]
 	mux.Lock()
 	defer mux.Unlock()
 
-	validMessages := make([]*proto.Message, 0)
+	validMessages := make([]*proto.IBFTMessage, 0)
 
 	invalidMessageKeys := make([]string, 0)
 	messages := ms.getProtoMessages(view, messageType)
@@ -214,7 +214,7 @@ func (ms *Messages) GetValidMessages(
 
 // GetMostRoundChangeMessages fetches most round change messages
 // for the minimum round and above
-func (ms *Messages) GetMostRoundChangeMessages(minRound, height uint64) []*proto.Message {
+func (ms *Messages) GetMostRoundChangeMessages(minRound, height uint64) []*proto.IBFTMessage {
 	messageType := proto.MessageType_ROUND_CHANGE
 
 	mux := ms.muxMap[messageType]
@@ -245,7 +245,7 @@ func (ms *Messages) GetMostRoundChangeMessages(minRound, height uint64) []*proto
 		return nil
 	}
 
-	messages := make([]*proto.Message, 0, bestRoundMessagesCount)
+	messages := make([]*proto.IBFTMessage, 0, bestRoundMessagesCount)
 	for _, msg := range roundMessageMap[bestRound] {
 		messages = append(messages, msg)
 	}
@@ -261,7 +261,7 @@ type roundMessageMap map[uint64]protoMessages
 
 // protoMessages is the set of messages that circulate.
 // It contains a mapping between the sender and their messages to avoid duplicates
-type protoMessages map[string]*proto.Message
+type protoMessages map[string]*proto.IBFTMessage
 
 // getViewMessages fetches the message queue for the specified view (height + round).
 // It will initialize a new message array if it's not found

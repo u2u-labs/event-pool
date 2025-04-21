@@ -7,7 +7,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"event-pool/prisma/db"
+	"event-pool/blockchain/storage"
+	"event-pool/blockchain/storage/prismadb"
+	db2 "event-pool/internal/db"
 	"event-pool/validators"
 	"go.uber.org/zap"
 
@@ -17,6 +19,7 @@ import (
 )
 
 const (
+	DefaultEpochSize     = 150
 	defaultCacheSize int = 100 // The default size for Blockchain LRU cache structures
 )
 
@@ -35,7 +38,7 @@ var (
 type Blockchain struct {
 	logger *zap.SugaredLogger // The logger object
 
-	db        *db.PrismaClient
+	db        storage.Storage // The database object
 	consensus Verifier
 	executor  Executor
 
@@ -83,6 +86,26 @@ func NewBlockchain(
 		stream:    &eventStream{},
 	}
 
+	var (
+		db  storage.Storage
+		err error
+	)
+
+	// Initialize database
+	dbClient, err := db2.NewClient()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	if db, err = prismadb.NewSQLStorage(
+		logger,
+		dbClient,
+	); err != nil {
+		return nil, err
+	}
+
+	b.db = db
+
 	if err := b.initCaches(defaultCacheSize); err != nil {
 		return nil, err
 	}
@@ -105,8 +128,56 @@ func (b *Blockchain) initCaches(size int) error {
 	return nil
 }
 
+// ComputeGenesis computes the genesis hash, and updates the blockchain reference
+func (b *Blockchain) ComputeGenesis() error {
+	// try to write the genesis block
+	head, ok := b.db.ReadHeadHash()
+
+	if ok {
+		// initialized storage
+		b.genesis, ok = b.db.ReadCanonicalHash(0)
+		if !ok {
+			return fmt.Errorf("failed to load genesis hash")
+		}
+
+		// validate that the genesis file in storage matches the chain.Genesis
+		if b.genesis != b.config.Genesis.StateRoot {
+			return fmt.Errorf("genesis file does not match current genesis")
+		}
+
+		header, ok := b.GetHeaderByHash(head)
+		if !ok {
+			return fmt.Errorf("failed to get header with hash %s", head.String())
+		}
+
+		b.logger.Info(
+			"Current header",
+			"hash",
+			header.Hash.String(),
+			"number",
+			header.Number,
+		)
+
+		b.setCurrentHeader(header)
+	} else {
+		// empty storage, write the genesis
+		if err := b.writeGenesis(b.config.Genesis); err != nil {
+			return err
+		}
+	}
+
+	b.logger.Info("genesis", "hash", b.config.Genesis.StateRoot)
+
+	return nil
+}
+
 func (b *Blockchain) GetConsensus() Verifier {
 	return b.consensus
+}
+
+// GetHeaderByHash returns the header by his hash
+func (b *Blockchain) GetHeaderByHash(hash types.Hash) (*types.Header, bool) {
+	return b.readHeader(hash)
 }
 
 // SetConsensus sets the consensus
@@ -115,7 +186,7 @@ func (b *Blockchain) SetConsensus(c Verifier) {
 }
 
 // setCurrentHeader sets the current header
-func (b *Blockchain) setCurrentHeader(h *types.Header, diff *big.Int) {
+func (b *Blockchain) setCurrentHeader(h *types.Header) {
 	// Update the header (atomic)
 	header := h.Copy()
 	b.currentHeader.Store(header)
@@ -232,15 +303,147 @@ func (b *Blockchain) executeBlockLogs(block *types.Block) (*BlockResult, error) 
 	return &BlockResult{}, nil
 }
 
+// readHeader Returns the header using the hash
+func (b *Blockchain) readHeader(hash types.Hash) (*types.Header, bool) {
+	// Try to find a hit in the headers cache
+	h, ok := b.headersCache.Get(hash)
+	if ok {
+		// Hit, return the3 header
+		header, ok := h.(*types.Header)
+		if !ok {
+			return nil, false
+		}
+
+		return header, true
+	}
+
+	// Cache miss, load it from the DB
+	hh, err := b.db.ReadHeader(hash)
+	if err != nil {
+		return nil, false
+	}
+
+	// Compute the header hash and update the cache
+	hh.ComputeHash()
+	b.headersCache.Add(hash, hh)
+
+	return hh, true
+}
+
+// GetHeaderByNumber returns the header using the block number
+func (b *Blockchain) GetHeaderByNumber(n uint64) (*types.Header, bool) {
+	hash, ok := b.db.ReadCanonicalHash(n)
+	if !ok {
+		return nil, false
+	}
+
+	h, ok := b.readHeader(hash)
+	if !ok {
+		return nil, false
+	}
+
+	return h, true
+}
+
+// GetBlockByHash returns the block using the block hash
+func (b *Blockchain) GetBlockByHash(hash types.Hash, full bool) (*types.Block, bool) {
+	header, ok := b.readHeader(hash)
+	if !ok {
+		return nil, false
+	}
+
+	block := &types.Block{
+		Header: header,
+	}
+
+	if !full || header.Number == 0 {
+		return block, true
+	}
+
+	return block, true
+}
+
+// GetBlockByNumber returns the block using the block number
+func (b *Blockchain) GetBlockByNumber(blockNumber uint64, full bool) (*types.Block, bool) {
+	blockHash, ok := b.db.ReadCanonicalHash(blockNumber)
+	if !ok {
+		return nil, false
+	}
+
+	// if blockNumber 0 (genesis block), do not try and get the full block
+	if blockNumber == uint64(0) {
+		full = false
+	}
+
+	return b.GetBlockByHash(blockHash, full)
+}
+
+// writeGenesis wrapper for the genesis write function
+func (b *Blockchain) writeGenesis(genesis *chain.Genesis) error {
+	header := genesis.GenesisHeader()
+	header.ComputeHash()
+
+	if err := b.writeGenesisImpl(header); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// writeGenesisImpl writes the genesis file to the DB + blockchain reference
+func (b *Blockchain) writeGenesisImpl(header *types.Header) error {
+	// Update the reference
+	b.genesis = header.Hash
+
+	// Update the DB
+	if err := b.db.WriteHeader(header); err != nil {
+		return err
+	}
+
+	// Advance the head
+	if _, err := b.advanceHead(header); err != nil {
+		return err
+	}
+
+	// Create an event and send it to the stream
+	event := &Event{}
+	event.AddNewHeader(header)
+	b.stream.push(event)
+
+	return nil
+}
+
+// advanceHead Sets the passed in header as the new head of the chain
+func (b *Blockchain) advanceHead(newHeader *types.Header) (*big.Int, error) {
+	// Write the current head hash into storage
+	if err := b.db.WriteHeadHash(newHeader.Hash); err != nil {
+		return nil, err
+	}
+
+	// Write the current head number into storage
+	if err := b.db.WriteHeadNumber(newHeader.Number); err != nil {
+		return nil, err
+	}
+
+	// Matches the current head number with the current hash
+	if err := b.db.WriteCanonicalHash(newHeader.Number, newHeader.Hash); err != nil {
+		return nil, err
+	}
+
+	// Update the blockchain reference
+	b.setCurrentHeader(newHeader)
+
+	return big.NewInt(0), nil
+}
+
 // WriteBlock writes a single block to the local blockchain.
 // It doesn't do any kind of verification, only commits the block to the DB
 func (b *Blockchain) WriteBlock(block *types.Block, source string) error {
 	b.writeLock.Lock()
 	defer b.writeLock.Unlock()
 
-	if block.Number() <= b.Header().Number() {
+	if block.Number() <= b.Header().Number {
 		b.logger.Info("block already inserted", "block", block.Number(), "source", source)
-
 		return nil
 	}
 
@@ -257,7 +460,7 @@ func (b *Blockchain) WriteBlock(block *types.Block, source string) error {
 	b.dispatchEvent(evnt)
 
 	logArgs := []any{
-		"number", header.Number(),
+		"number", header.Number,
 		"hash", header.Hash,
 		"parent", header.ParentHash,
 	}
@@ -274,5 +477,5 @@ func (b *Blockchain) dispatchEvent(evnt *Event) {
 
 // Close closes the DB connection
 func (b *Blockchain) Close() error {
-	return b.db.Disconnect()
+	return b.db.Close()
 }

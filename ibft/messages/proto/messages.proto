@@ -1,5 +1,7 @@
 syntax = "proto3";
 
+package v1;
+
 option go_package = "/messages/proto";
 
 // MessageType defines the types of messages
@@ -24,7 +26,7 @@ message View {
 }
 
 // Message defines the base message structure
-message Message {
+message IBFTMessage {
   // view is the current view for the message
   View view = 1;
 
@@ -90,15 +92,15 @@ message RoundChangeMessage {
 message PreparedCertificate {
   // proposalMessage is the proposal message to reach
   // at least Q(N) - 1 PREPARE messages
-  Message proposalMessage = 1;
+  IBFTMessage proposalMessage = 1;
 
   // prepareMessages are the PREPARE messages at least Q(N) - 1
-  repeated Message prepareMessages = 2;
+  repeated IBFTMessage prepareMessages = 2;
 }
 
 // RoundChangeCertificate is a collection of
 // round change messages for a certain round
 message RoundChangeCertificate {
   // roundChangeMessages are the ROUND CHANGE messages
-  repeated Message roundChangeMessages = 1;
+  repeated IBFTMessage roundChangeMessages = 1;
 }

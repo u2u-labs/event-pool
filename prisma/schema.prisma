@@ -51,3 +51,8 @@ model Subscription {
   @@unique([contractId, clientId])
   @@index([clientId])
 }
+
+model KeyValue {
+  key   String @id
+  value Bytes
+}

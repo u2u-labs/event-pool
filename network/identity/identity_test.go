@@ -59,14 +59,14 @@ func TestTemporaryDial(t *testing.T) {
 				opts ...grpc.CallOption,
 			) (*proto.Status, error) {
 				return &proto.Status{
-					Chains:        []int64{0},
+					Chain:         0,
 					TemporaryDial: true, // make sure the dial is temporary
 				}, nil
 			})
 		},
 	)
 	// set mock chain id
-	identityService.chainIDs = []int64{0}
+	identityService.chainID = 0
 
 	// Check that there was no error during handshaking
 	assert.NoError(
@@ -103,7 +103,7 @@ func TestHandshake_Errors(t *testing.T) {
 				opts ...grpc.CallOption,
 			) (*proto.Status, error) {
 				return &proto.Status{
-					Chains:        []int64{responderChainID},
+					Chain:         responderChainID,
 					TemporaryDial: false,
 				}, nil
 			})
@@ -111,7 +111,7 @@ func TestHandshake_Errors(t *testing.T) {
 	)
 
 	// Set the requester chain ID
-	identityService.chainIDs = []int64{requesterChainID}
+	identityService.chainID = requesterChainID
 
 	// Check that there was a chain ID mismatch during handshaking
 	connectErr := identityService.handleConnected("TestPeer", network.DirInbound)

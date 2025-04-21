@@ -12,7 +12,7 @@ type CommittedSeal struct {
 }
 
 // ExtractCommittedSeals extracts the committed seals from the passed in messages
-func ExtractCommittedSeals(commitMessages []*proto.Message) []*CommittedSeal {
+func ExtractCommittedSeals(commitMessages []*proto.IBFTMessage) []*CommittedSeal {
 	committedSeals := make([]*CommittedSeal, 0)
 
 	for _, commitMessage := range commitMessages {
@@ -27,8 +27,8 @@ func ExtractCommittedSeals(commitMessages []*proto.Message) []*CommittedSeal {
 }
 
 // ExtractCommittedSeal extracts the committed seal from the passed in message
-func ExtractCommittedSeal(commitMessage *proto.Message) *CommittedSeal {
-	commitData, _ := commitMessage.Payload.(*proto.Message_CommitData)
+func ExtractCommittedSeal(commitMessage *proto.IBFTMessage) *CommittedSeal {
+	commitData, _ := commitMessage.Payload.(*proto.IBFTMessage_CommitData)
 
 	return &CommittedSeal{
 		Signer:    commitMessage.From,
@@ -37,84 +37,84 @@ func ExtractCommittedSeal(commitMessage *proto.Message) *CommittedSeal {
 }
 
 // ExtractCommitHash extracts the commit proposal hash from the passed in message
-func ExtractCommitHash(commitMessage *proto.Message) []byte {
+func ExtractCommitHash(commitMessage *proto.IBFTMessage) []byte {
 	if commitMessage.Type != proto.MessageType_COMMIT {
 		return nil
 	}
 
-	commitData, _ := commitMessage.Payload.(*proto.Message_CommitData)
+	commitData, _ := commitMessage.Payload.(*proto.IBFTMessage_CommitData)
 
 	return commitData.CommitData.ProposalHash
 }
 
 // ExtractProposal extracts the proposal from the passed in message
-func ExtractProposal(proposalMessage *proto.Message) []byte {
+func ExtractProposal(proposalMessage *proto.IBFTMessage) []byte {
 	if proposalMessage.Type != proto.MessageType_PREPREPARE {
 		return nil
 	}
 
-	preprepareData, _ := proposalMessage.Payload.(*proto.Message_PreprepareData)
+	preprepareData, _ := proposalMessage.Payload.(*proto.IBFTMessage_PreprepareData)
 
 	return preprepareData.PreprepareData.Proposal
 }
 
 // ExtractProposalHash extracts the proposal hash from the passed in message
-func ExtractProposalHash(proposalMessage *proto.Message) []byte {
+func ExtractProposalHash(proposalMessage *proto.IBFTMessage) []byte {
 	if proposalMessage.Type != proto.MessageType_PREPREPARE {
 		return nil
 	}
 
-	preprepareData, _ := proposalMessage.Payload.(*proto.Message_PreprepareData)
+	preprepareData, _ := proposalMessage.Payload.(*proto.IBFTMessage_PreprepareData)
 
 	return preprepareData.PreprepareData.ProposalHash
 }
 
 // ExtractRoundChangeCertificate extracts the RCC from the passed in message
-func ExtractRoundChangeCertificate(proposalMessage *proto.Message) *proto.RoundChangeCertificate {
+func ExtractRoundChangeCertificate(proposalMessage *proto.IBFTMessage) *proto.RoundChangeCertificate {
 	if proposalMessage.Type != proto.MessageType_PREPREPARE {
 		return nil
 	}
 
-	preprepareData, _ := proposalMessage.Payload.(*proto.Message_PreprepareData)
+	preprepareData, _ := proposalMessage.Payload.(*proto.IBFTMessage_PreprepareData)
 
 	return preprepareData.PreprepareData.Certificate
 }
 
 // ExtractPrepareHash extracts the prepare proposal hash from the passed in message
-func ExtractPrepareHash(prepareMessage *proto.Message) []byte {
+func ExtractPrepareHash(prepareMessage *proto.IBFTMessage) []byte {
 	if prepareMessage.Type != proto.MessageType_PREPARE {
 		return nil
 	}
 
-	prepareData, _ := prepareMessage.Payload.(*proto.Message_PrepareData)
+	prepareData, _ := prepareMessage.Payload.(*proto.IBFTMessage_PrepareData)
 
 	return prepareData.PrepareData.ProposalHash
 }
 
 // ExtractLatestPC extracts the latest PC from the passed in message
-func ExtractLatestPC(roundChangeMessage *proto.Message) *proto.PreparedCertificate {
+func ExtractLatestPC(roundChangeMessage *proto.IBFTMessage) *proto.PreparedCertificate {
 	if roundChangeMessage.Type != proto.MessageType_ROUND_CHANGE {
 		return nil
 	}
 
-	rcData, _ := roundChangeMessage.Payload.(*proto.Message_RoundChangeData)
+	rcData, _ := roundChangeMessage.Payload.(*proto.IBFTMessage_RoundChangeData)
 
 	return rcData.RoundChangeData.LatestPreparedCertificate
 }
 
 // ExtractLastPreparedProposedBlock extracts the latest prepared proposed block from the passed in message
-func ExtractLastPreparedProposedBlock(roundChangeMessage *proto.Message) []byte {
+func ExtractLastPreparedProposedBlock(roundChangeMessage *proto.IBFTMessage) []byte {
 	if roundChangeMessage.Type != proto.MessageType_ROUND_CHANGE {
 		return nil
 	}
 
-	rcData, _ := roundChangeMessage.Payload.(*proto.Message_RoundChangeData)
+	rcData, _ := roundChangeMessage.Payload.(*proto.IBFTMessage_RoundChangeData)
 
 	return rcData.RoundChangeData.LastPreparedProposedBlock
 }
 
 // HasUniqueSenders checks if the messages have unique senders
-func HasUniqueSenders(messages []*proto.Message) bool {
+func HasUniqueSenders(messages []*proto.IBFTMessage) bool {
 	if len(messages) < 1 {
 		return false
 	}
@@ -134,7 +134,7 @@ func HasUniqueSenders(messages []*proto.Message) bool {
 }
 
 // HaveSameProposalHash checks if the messages have the same proposal hash
-func HaveSameProposalHash(messages []*proto.Message) bool {
+func HaveSameProposalHash(messages []*proto.IBFTMessage) bool {
 	if len(messages) < 1 {
 		return false
 	}
@@ -169,7 +169,7 @@ func HaveSameProposalHash(messages []*proto.Message) bool {
 }
 
 // AllHaveLowerRound checks if all messages have the same round
-func AllHaveLowerRound(messages []*proto.Message, round uint64) bool {
+func AllHaveLowerRound(messages []*proto.IBFTMessage, round uint64) bool {
 	if len(messages) < 1 {
 		return false
 	}
@@ -184,7 +184,7 @@ func AllHaveLowerRound(messages []*proto.Message, round uint64) bool {
 }
 
 // AllHaveSameHeight checks if all messages have the same height
-func AllHaveSameHeight(messages []*proto.Message, height uint64) bool {
+func AllHaveSameHeight(messages []*proto.IBFTMessage, height uint64) bool {
 	if len(messages) < 1 {
 		return false
 	}

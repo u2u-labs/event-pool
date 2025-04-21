@@ -2,7 +2,6 @@ package consensus
 
 import (
 	"context"
-	"log"
 
 	"event-pool/blockchain"
 	"event-pool/chain"
@@ -38,7 +37,7 @@ type Consensus interface {
 // Config is the configuration for the consensus
 type Config struct {
 	// Logger to be used by the consensus
-	Logger *log.Logger
+	Logger *zap.SugaredLogger
 
 	// Params are the params of the chain and the consensus
 	Params *chain.Params
@@ -51,16 +50,15 @@ type Config struct {
 }
 
 type Params struct {
-	Context             context.Context
-	Config              *Config
-	Network             *network.Server
-	Blockchain          *blockchain.Blockchain
-	Grpc                *grpc.Server
-	Logger              *zap.SugaredLogger
-	Metrics             *Metrics
-	SecretsManager      secrets.SecretsManager
-	BlockTime           uint64
-	AdditionalEpochTime uint64
+	Context        context.Context
+	Config         *Config
+	Network        *network.Server
+	Blockchain     *blockchain.Blockchain
+	Grpc           *grpc.Server
+	Logger         *zap.SugaredLogger
+	Metrics        *Metrics
+	SecretsManager secrets.SecretsManager
+	BlockTime      uint64
 }
 
 // Factory is the factory function to create a discovery consensus

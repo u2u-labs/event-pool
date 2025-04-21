@@ -30,7 +30,8 @@ type Config struct {
 
 	LogLevel zapcore.Level
 
-	DbUrl string
+	DbUrl     string
+	BlockTime uint64
 }
 
 // Telemetry holds the config details for metric services

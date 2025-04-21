@@ -4,26 +4,30 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync/atomic"
-
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // Header represents a block header in the Ethereum blockchain.
 type Header struct {
-	Hash       Hash                 `json:"hash"`
-	ParentHash Hash                 `json:"parentHash"`
-	Logs       []*types.Log         `json:"logs"`
-	Filter     ethereum.FilterQuery `json:"filter"`
-	Creator    Address              `json:"creator"`
+	Hash       Hash    `json:"hash"`
+	ParentHash Hash    `json:"parentHash"`
+	ChainId    uint64  `json:"chainId"`
+	StateRoot  Hash    `json:"stateRoot"`
+	Creator    Address `json:"creator"`
+	Number     uint64  `json:"number"`
+	Timestamp  uint64  `json:"timestamp"`
+	ExtraData  []byte  `json:"extraData"`
 }
 
 // headerJSON represents a block header used for json calls
 type headerJSON struct {
-	Hash       Hash                 `json:"hash"`
-	ParentHash Hash                 `json:"parentHash"`
-	Logs       []*types.Log         `json:"logs"`
-	Filter     ethereum.FilterQuery `json:"filter"`
+	Hash       Hash    `json:"hash"`
+	ParentHash Hash    `json:"parentHash"`
+	ChainId    uint64  `json:"chainId"`
+	StateRoot  Hash    `json:"stateRoot"`
+	Creator    Address `json:"creator"`
+	Number     uint64  `json:"number"`
+	Timestamp  uint64  `json:"timestamp"`
+	ExtraData  []byte  `json:"extraData"`
 }
 
 func (h *Header) MarshalJSON() ([]byte, error) {
@@ -31,8 +35,12 @@ func (h *Header) MarshalJSON() ([]byte, error) {
 
 	header.Hash = h.Hash
 	header.ParentHash = h.ParentHash
-	header.Logs = h.Logs
-	header.Filter = h.Filter
+	header.ChainId = h.ChainId
+	header.StateRoot = h.StateRoot
+	header.Creator = h.Creator
+	header.Number = h.Number
+	header.Timestamp = h.Timestamp
+	header.ExtraData = h.ExtraData
 
 	return json.Marshal(&header)
 }
@@ -45,8 +53,12 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 
 	h.Hash = header.Hash
 	h.ParentHash = header.ParentHash
-	h.Logs = header.Logs
-	h.Filter = header.Filter
+	h.ChainId = header.ChainId
+	h.StateRoot = header.StateRoot
+	h.Creator = header.Creator
+	h.Number = header.Number
+	h.Timestamp = header.Timestamp
+	h.ExtraData = header.ExtraData
 
 	return nil
 }
@@ -73,10 +85,6 @@ func (h *Header) Copy() *Header {
 	}
 
 	return newHeader
-}
-
-func (h *Header) Number() uint64 {
-	return h.Filter.FromBlock.Uint64()
 }
 
 type Block struct {
@@ -113,11 +121,11 @@ func (b *Block) Size() uint64 {
 }
 
 func (b *Block) String() string {
-	str := fmt.Sprintf(`Block(#%v):`, b.Header.Filter.FromBlock)
+	str := fmt.Sprintf(`Block(#%v):`, b.Header.Number)
 
 	return str
 }
 
 func (b *Block) Number() uint64 {
-	return b.Header.Number()
+	return b.Header.Number
 }
