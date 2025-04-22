@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
@@ -13,11 +14,17 @@ import (
 	"event-pool/chain"
 	"event-pool/consensus"
 	"event-pool/consensus/ibft"
+	"event-pool/crypto"
+	configHelper "event-pool/helper/config"
+	"event-pool/helper/keccak"
 	db2 "event-pool/internal/db"
 	"event-pool/network"
 	"event-pool/prisma/db"
 	"event-pool/secrets"
 	"event-pool/server/proto"
+	"event-pool/state"
+	itrie "event-pool/state/immutable-trie"
+	"event-pool/txpool"
 	"event-pool/types"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
@@ -29,8 +36,10 @@ import (
 
 // Server is the central manager of the blockchain client
 type Server struct {
-	logger *zap.SugaredLogger
-	config *Config
+	logger       *zap.SugaredLogger
+	config       *Config
+	state        state.State
+	stateStorage itrie.Storage
 
 	consensus consensus.Consensus
 
@@ -38,13 +47,16 @@ type Server struct {
 	chain      *chain.NodeChain
 
 	// state executor
-	//executor *state.Executor
+	executor *state.Executor
 
 	// system grpc server
 	grpcServer *grpc.Server
 
 	// libp2p network
 	network *network.Server
+
+	// transaction pool
+	txpool *txpool.TxPool
 
 	serverMetrics *serverMetrics
 
@@ -137,16 +149,67 @@ func NewServer(config *Config) (*Server, error) {
 		m.network = networkSvr
 	}
 
+	// start blockchain object
+	stateStorage, err := itrie.NewPrismaStorage(m.db, logger.Named("trie"))
+	if err != nil {
+		return nil, err
+	}
+
+	m.stateStorage = stateStorage
+
+	st := itrie.NewState(stateStorage)
+	m.state = st
+
+	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
+
+	// use the eip155 signer
+	signer := crypto.NewEIP155Signer(uint64(m.config.Chain.Params.ChainID))
+
 	cfg := config.Chain.Clone()
 	cfg.NodeStorageAddress = types.StringToAddress(config.NodeStorageAddress)
 	cfg.RpcInfo = &chain.RpcInfo{}
 	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
 	cfg.Genesis.ChainId = uint64(m.config.Chain.Params.ChainID)
 	// blockchain object
-	m.blockchain, err = blockchain.NewBlockchain(logger, cfg, nil, nil)
+	m.blockchain, err = blockchain.NewBlockchain(logger, cfg, nil, m.executor, signer)
 	if err != nil {
 		return nil, err
 	}
+
+	{
+		hub := &txpoolHub{
+			Blockchain: m.blockchain,
+		}
+
+		deploymentWhitelist, err := configHelper.GetDeploymentWhitelist(config.Chain)
+		if err != nil {
+			return nil, err
+		}
+
+		// start transaction pool
+		m.txpool, err = txpool.NewTxPool(
+			logger.Named("txpool"),
+			hub,
+			m.grpcServer,
+			m.network,
+			m.serverMetrics.txpool,
+			&txpool.Config{
+				MaxSlots:            m.config.MaxSlots,
+				PriceLimit:          m.config.PriceLimit,
+				MaxAccountEnqueued:  m.config.MaxAccountEnqueued,
+				DeploymentWhitelist: deploymentWhitelist,
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		m.txpool.SetSigner(signer)
+	}
+
+	m.executor.SetChainId(uint64(m.config.Chain.Params.ChainID))
+	m.executor.FnGetRpcClient = m.blockchain.GetEthereumClient
+	m.executor.FnGetMonitor = m.blockchain.GetMonitor
 
 	{
 		// Setup consensus
@@ -186,6 +249,8 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, err
 	}
 
+	m.txpool.Start()
+
 	return m, nil
 }
 
@@ -203,6 +268,8 @@ func (s *Server) setupConsensus() error {
 			Config:         config,
 			Network:        s.network,
 			Blockchain:     s.blockchain,
+			Executor:       s.executor,
+			TxPool:         s.txpool,
 			Grpc:           s.grpcServer,
 			Logger:         s.logger,
 			Metrics:        s.serverMetrics.consensus,
@@ -405,4 +472,48 @@ func loggerInterceptor(logger *zap.SugaredLogger) grpc.UnaryServerInterceptor {
 
 		return resp, err
 	}
+}
+
+type txpoolHub struct {
+	state state.State
+	*blockchain.Blockchain
+}
+
+func (t *txpoolHub) GetNonce(root types.Hash, addr types.Address) uint64 {
+	snap, err := t.state.NewSnapshotAt(root)
+	if err != nil {
+		return 0
+	}
+
+	result, ok := snap.Get(keccak.Keccak256(nil, addr.Bytes()))
+	if !ok {
+		return 0
+	}
+
+	var account state.Account
+
+	if err := account.UnmarshalRlp(result); err != nil {
+		return 0
+	}
+
+	return account.Nonce
+}
+
+func (t *txpoolHub) GetBalance(root types.Hash, addr types.Address) (*big.Int, error) {
+	snap, err := t.state.NewSnapshotAt(root)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get snapshot for root, %w", err)
+	}
+
+	result, ok := snap.Get(keccak.Keccak256(nil, addr.Bytes()))
+	if !ok {
+		return big.NewInt(0), nil
+	}
+
+	var account state.Account
+	if err = account.UnmarshalRlp(result); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal account from snapshot, %w", err)
+	}
+
+	return account.Balance, nil
 }

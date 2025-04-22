@@ -10,7 +10,9 @@ import (
 	"event-pool/blockchain/storage"
 	"event-pool/blockchain/storage/prismadb"
 	db2 "event-pool/internal/db"
+	"event-pool/internal/monitor"
 	"event-pool/pkg/ethereum"
+	"event-pool/state"
 	"event-pool/validators"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"go.uber.org/zap"
@@ -42,6 +44,7 @@ type Blockchain struct {
 	db        storage.Storage // The database object
 	consensus Verifier
 	executor  Executor
+	txSigner  TxSigner
 
 	config  *chain.NodeChain // Config containing chain information
 	genesis types.Hash       // The hash of the genesis block
@@ -54,6 +57,7 @@ type Blockchain struct {
 
 	rpcClient          *ethereum.Client
 	nodeStorageAddress types.Address
+	monitor            *monitor.Monitor
 
 	writeLock sync.Mutex
 }
@@ -65,11 +69,21 @@ type Verifier interface {
 }
 
 type Executor interface {
+	ProcessBlock(
+		parentRoot types.Hash,
+		block *types.Block,
+		blockCreator types.Address,
+	) (*state.Transition, error)
 }
 
 type BlockResult struct {
 	Root   types.Hash
 	logger *zap.SugaredLogger
+}
+
+type TxSigner interface {
+	// Sender returns the sender of the transaction
+	Sender(tx *types.Transaction) (types.Address, error)
 }
 
 // NewBlockchain creates a new blockchain object
@@ -78,6 +92,7 @@ func NewBlockchain(
 	config *chain.NodeChain,
 	consensus Verifier,
 	executor Executor,
+	txSigner TxSigner,
 ) (*Blockchain, error) {
 	b := &Blockchain{
 		logger:    logger.Named("blockchain"),
@@ -85,6 +100,7 @@ func NewBlockchain(
 		consensus: consensus,
 		executor:  executor,
 		stream:    &eventStream{},
+		txSigner:  txSigner,
 	}
 
 	var (
@@ -113,6 +129,10 @@ func NewBlockchain(
 	}
 	b.rpcClient = client
 	b.nodeStorageAddress = config.NodeStorageAddress
+	ethClients := make(map[int]*ethereum.Client)
+	ethClients[b.config.Params.ChainID] = client
+	mon := monitor.NewMonitor(ethClients, dbClient, nil)
+	b.monitor = mon
 
 	if err := b.initCaches(defaultCacheSize); err != nil {
 		return nil, err
@@ -223,6 +243,33 @@ func (b *Blockchain) VerifyPotentialBlock(block *types.Block, currentValidators 
 	return b.verifyBlock(block)
 }
 
+// executeBlockTransactions executes the transactions in the block locally,
+// and reports back the block execution result
+func (b *Blockchain) executeBlockTransactions(block *types.Block) (*BlockResult, error) {
+	header := block.Header
+
+	parent, ok := b.readHeader(header.ParentHash)
+	if !ok {
+		return nil, ErrParentNotFound
+	}
+
+	blockCreator, err := b.consensus.GetBlockCreator(header)
+	if err != nil {
+		return nil, err
+	}
+
+	txn, err := b.executor.ProcessBlock(parent.StateRoot, block, blockCreator)
+	if err != nil {
+		return nil, err
+	}
+
+	_, root := txn.Commit()
+
+	return &BlockResult{
+		Root: root,
+	}, nil
+}
+
 // VerifyFinalizedBlock verifies that the block is valid by performing a series of checks.
 // It is assumed that the block status is sealed (committed)
 func (b *Blockchain) VerifyFinalizedBlock(block *types.Block) error {
@@ -265,7 +312,42 @@ func (b *Blockchain) verifyBlock(block *types.Block) error {
 // - The hashes match up
 // - The block numbers match up
 func (b *Blockchain) verifyBlockParent(childBlock *types.Block) error {
-	// TODO: This needs to be updated to use the new header verification
+	// Grab the parent block
+	parentHash := childBlock.ParentHash()
+	parent, ok := b.readHeader(parentHash)
+
+	if !ok {
+		b.logger.Error(fmt.Sprintf(
+			"parent of %s (%d) not found: %s",
+			childBlock.Hash().String(),
+			childBlock.Number(),
+			parentHash,
+		))
+
+		return ErrParentNotFound
+	}
+
+	// Make sure the hash is valid
+	if parent.Hash == types.ZeroHash {
+		return ErrInvalidParentHash
+	}
+
+	// Make sure the hashes match up
+	if parentHash != parent.Hash {
+		return ErrParentHashMismatch
+	}
+
+	// Make sure the block numbers are correct
+	if childBlock.Number()-1 != parent.Number {
+		b.logger.Error(fmt.Sprintf(
+			"number sequence not correct at %d and %d",
+			childBlock.Number(),
+			parent.Number,
+		))
+
+		return ErrInvalidBlockSequence
+	}
+
 	return nil
 }
 
@@ -275,7 +357,7 @@ func (b *Blockchain) verifyBlockParent(childBlock *types.Block) error {
 // - The execution result matches up
 func (b *Blockchain) verifyBlockBody(block *types.Block) error {
 	// Execute the transactions in the block and grab the result
-	blockResult, executeErr := b.executeBlockLogs(block)
+	blockResult, executeErr := b.executeBlockTransactions(block)
 	if executeErr != nil {
 		return fmt.Errorf("unable to execute block transactions, %w", executeErr)
 	}
@@ -302,13 +384,6 @@ func (br *BlockResult) verifyBlockResult(referenceBlock *types.Block) error {
 	}
 
 	return nil
-}
-
-// executeBlockLogs executes the transactions in the block locally,
-// and reports back the block execution result
-func (b *Blockchain) executeBlockLogs(block *types.Block) (*BlockResult, error) {
-
-	return &BlockResult{}, nil
 }
 
 // readHeader Returns the header using the hash
@@ -528,6 +603,14 @@ func (b *Blockchain) Close() error {
 
 func (b *Blockchain) GetRpcClient() bind.ContractBackend {
 	return b.rpcClient.GetClient()
+}
+
+func (b *Blockchain) GetEthereumClient() *ethereum.Client {
+	return b.rpcClient
+}
+
+func (b *Blockchain) GetMonitor() *monitor.Monitor {
+	return b.monitor
 }
 
 func (b *Blockchain) GetNodeStorageAddress() types.Address {

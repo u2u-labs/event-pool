@@ -45,6 +45,15 @@ node_chain:
     chain_id: 2484
     whitelists:
       deployment: ["0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1", "0x2743eEC46576f76f47334569074242F3D9a90B44"]
+    forks:
+      homestead: 0
+      byzantium: 0
+      constantinople: 0
+      petersburg: 0
+      istanbul: 0
+      EIP150: 0
+      EIP158: 0
+      EIP155: 0
   genesis:
     timestamp: 0x0
     number: 0x0
@@ -55,4 +64,4 @@ node_chain:
 grpc_addr: :10000
 jsonrpc_addr: :10002
 data_dir: ./data/temp
-node_storage_address: 0x5cac30faAE558F167FEB262Df07ABA5D1B50e474
+node_storage_address: 0x8B0b7E0c9C5a6B48F5bA0352713B85c2C4973B78

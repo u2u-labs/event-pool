@@ -10,6 +10,7 @@ require (
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0
+	github.com/hashicorp/go-immutable-radix v1.3.1
 	github.com/hashicorp/golang-lru v1.0.2
 	github.com/hashicorp/hcl v1.0.1-vault-7
 	github.com/hibiken/asynq v0.25.1
@@ -24,6 +25,7 @@ require (
 	github.com/spf13/viper v1.20.1
 	github.com/steebchen/prisma-client-go v0.47.0
 	github.com/stretchr/testify v1.10.0
+	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d
 	github.com/umbracle/fastrlp v0.1.0
 	go.uber.org/atomic v1.11.0
 	go.uber.org/zap v1.27.0
@@ -84,6 +86,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/google/pprof v0.0.0-20250208200701-d0013a598941 // indirect

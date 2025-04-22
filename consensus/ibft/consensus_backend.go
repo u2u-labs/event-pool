@@ -9,6 +9,7 @@ import (
 	"event-pool/consensus/ibft/signer"
 	"event-pool/helper/hex"
 	"event-pool/ibft/messages"
+	"event-pool/state"
 	"event-pool/types"
 )
 
@@ -152,10 +153,21 @@ func (i *backendIBFT) buildBlock(parent *types.Header) (*types.Block, error) {
 
 	i.currentSigner.InitIBFTExtra(header, i.currentValidators, parentCommittedSeals)
 
+	transition, err := i.executor.BeginTxn(parent.StateRoot, header, i.currentSigner.Address())
+	if err != nil {
+		return nil, err
+	}
+
+	txs := i.writeTransactions(math.MaxUint64, header.Number, transition)
+
 	// build the block
 	block := consensus.BuildBlock(consensus.BuildBlockParams{
 		Header: header,
+		Txns:   txs,
 	})
+
+	_, root := transition.Commit()
+	header.StateRoot = root
 
 	// write the seal of the block after all the fields are completed
 	header, err = i.currentSigner.WriteProposerSeal(header)
@@ -223,4 +235,135 @@ func (i *backendIBFT) ValidateExtraDataFormat(header *types.Header) error {
 	_, err = blockSigner.GetIBFTExtra(header)
 
 	return err
+}
+
+// ----------------------------------------------------------------------------
+
+type status uint8
+
+const (
+	success status = iota
+	fail
+	skip
+)
+
+type txExeResult struct {
+	tx     *types.Transaction
+	status status
+}
+
+type transitionInterface interface {
+	Write(txn *types.Transaction) error
+	WriteFailedReceipt(txn *types.Transaction) error
+}
+
+func (i *backendIBFT) writeTransactions(
+	gasLimit,
+	blockNumber uint64,
+	transition transitionInterface,
+) (executed []*types.Transaction) {
+	executed = make([]*types.Transaction, 0)
+	blockTimer := time.NewTimer(i.blockTime)
+
+	if !i.currentHooks.ShouldWriteTransactions(blockNumber) {
+		// wait for the timer to expire
+		<-blockTimer.C
+		return
+	}
+
+	var (
+		successful = 0
+		failed     = 0
+		skipped    = 0
+	)
+
+	defer func() {
+		i.logger.Info(
+			"executed txs",
+			"successful", successful,
+			"failed", failed,
+			"skipped", skipped,
+			"remaining", i.txpool.Length(),
+		)
+	}()
+
+	i.txpool.Prepare()
+
+write:
+	for {
+		select {
+		case <-blockTimer.C:
+			return
+		default:
+			// execute transactions one by one
+			result, ok := i.writeTransaction(
+				i.txpool.Peek(),
+				transition,
+				gasLimit,
+			)
+
+			if !ok {
+				break write
+			}
+
+			tx := result.tx
+
+			switch result.status {
+			case success:
+				executed = append(executed, tx)
+				successful++
+			case fail:
+				failed++
+			case skip:
+				skipped++
+			}
+		}
+	}
+
+	//	wait for the timer to expire
+	<-blockTimer.C
+
+	return
+}
+
+func (i *backendIBFT) writeTransaction(
+	tx *types.Transaction,
+	transition transitionInterface,
+	gasLimit uint64,
+) (*txExeResult, bool) {
+	if tx == nil {
+		return nil, false
+	}
+
+	if tx.ExceedsBlockGasLimit(gasLimit) {
+		i.txpool.Drop(tx)
+
+		if err := transition.WriteFailedReceipt(tx); err != nil {
+			i.logger.Error(
+				fmt.Sprintf(
+					"unable to write failed receipt for transaction %s",
+					tx.Hash,
+				),
+			)
+		}
+
+		// continue processing
+		return &txExeResult{tx, fail}, true
+	}
+
+	if err := transition.Write(tx); err != nil {
+		if appErr, ok := err.(*state.TransitionApplicationError); ok && appErr.IsRecoverable { //nolint:errorlint
+			i.txpool.Demote(tx)
+
+			return &txExeResult{tx, skip}, true
+		} else {
+			i.txpool.Drop(tx)
+
+			return &txExeResult{tx, fail}, true
+		}
+	}
+
+	i.txpool.Pop(tx)
+
+	return &txExeResult{tx, success}, true
 }

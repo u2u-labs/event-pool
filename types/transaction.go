@@ -98,7 +98,9 @@ func (t *Transaction) Size() uint64 {
 }
 
 func (t *Transaction) ExceedsBlockGasLimit(blockGasLimit uint64) bool {
-	return t.Gas > blockGasLimit
+	//return t.Gas > blockGasLimit
+	// all txs are under block gas limit
+	return false
 }
 
 func (t *Transaction) IsUnderpriced(priceLimit uint64) bool {

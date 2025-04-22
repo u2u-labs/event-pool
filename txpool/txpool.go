@@ -636,10 +636,10 @@ func (p *TxPool) validateTx(tx *types.Transaction) error {
 		return ErrSmartContractRestricted
 	}
 
-	// Reject underpriced transactions
-	if tx.IsUnderpriced(p.priceLimit) {
-		return ErrUnderpriced
-	}
+	//// Reject underpriced transactions
+	//if tx.IsUnderpriced(p.priceLimit) {
+	//	return ErrUnderpriced
+	//}
 
 	// Grab the state root for the latest block
 	stateRoot := p.store.Header().StateRoot

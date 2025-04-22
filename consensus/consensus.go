@@ -7,6 +7,8 @@ import (
 	"event-pool/chain"
 	"event-pool/network"
 	"event-pool/secrets"
+	"event-pool/state"
+	"event-pool/txpool"
 	"event-pool/types"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
@@ -52,8 +54,10 @@ type Config struct {
 type Params struct {
 	Context        context.Context
 	Config         *Config
+	TxPool         *txpool.TxPool
 	Network        *network.Server
 	Blockchain     *blockchain.Blockchain
+	Executor       *state.Executor
 	Grpc           *grpc.Server
 	Logger         *zap.SugaredLogger
 	Metrics        *Metrics

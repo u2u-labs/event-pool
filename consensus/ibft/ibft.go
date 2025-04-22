@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"event-pool/helper/progress"
+	"event-pool/state"
 	"go.uber.org/zap"
 
 	"event-pool/blockchain"
@@ -36,6 +37,17 @@ var (
 	ErrParentCommittedSealsNotFound = errors.New("parent committed seals not found")
 )
 
+type txPoolInterface interface {
+	Prepare()
+	Length() uint64
+	Peek() *types.Transaction
+	Pop(tx *types.Transaction)
+	Drop(tx *types.Transaction)
+	Demote(tx *types.Transaction)
+	ResetWithHeaders(headers ...*types.Header)
+	SetSealing(bool)
+}
+
 type forkManagerInterface interface {
 	Initialize() error
 	Close() error
@@ -53,6 +65,8 @@ type backendIBFT struct {
 	logger         *zap.SugaredLogger     // Reference to the logging
 	blockchain     *blockchain.Blockchain // Reference to the blockchain layer
 	network        *network.Server        // Reference to the networking layer
+	executor       *state.Executor        // Reference to the state executor
+	txpool         txPoolInterface        // Reference to the transaction pool
 	syncer         syncer.Syncer          // Reference to the sync protocol
 	secretsManager secrets.SecretsManager // Reference to the secret manager
 	Grpc           *grpc.Server           // Reference to the gRPC manager
@@ -135,6 +149,8 @@ func Factory(params *consensus.Params) (consensus.Consensus, error) {
 		Grpc:           params.Grpc,
 		metrics:        params.Metrics,
 		forkManager:    forkManager,
+		executor:       params.Executor,
+		txpool:         params.TxPool,
 
 		// Configurations
 		config:             params.Config,

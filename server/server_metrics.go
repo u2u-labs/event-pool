@@ -6,6 +6,7 @@ import (
 
 	"event-pool/consensus"
 	"event-pool/network"
+	"event-pool/txpool"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"gopkg.in/DataDog/dd-trace-go.v1/profiler"
 )
@@ -14,6 +15,7 @@ import (
 type serverMetrics struct {
 	network   *network.Metrics
 	consensus *consensus.Metrics
+	txpool    *txpool.Metrics
 }
 
 // metricProvider serverMetric instance for the given ChainID and nameSpace
@@ -22,12 +24,14 @@ func metricProvider(nameSpace string, chainID string, metricsRequired bool) *ser
 		return &serverMetrics{
 			network:   network.GetPrometheusMetrics(nameSpace, "chain_id", chainID),
 			consensus: consensus.GetPrometheusMetrics(nameSpace, "chain_id", chainID),
+			txpool:    txpool.GetPrometheusMetrics(nameSpace, "chain_id", chainID),
 		}
 	}
 
 	return &serverMetrics{
 		network:   network.NilMetrics(),
 		consensus: consensus.NilMetrics(),
+		txpool:    txpool.NilMetrics(),
 	}
 }
 

@@ -279,19 +279,7 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 
 					fmt.Printf("Found %d logs for blocks %d to %d\n", len(logs), fromBlock, toBlock)
 
-					for _, eventLog := range logs {
-						decodedData, err := client.GetDecoder().DecodeEvent(eventSignature, eventLog.Data, eventLog.Topics)
-						if err != nil {
-							fmt.Printf("ERROR: Failed to decode event data: %v\n", err)
-							decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
-						}
-
-						err = m.processEvent(ctx, int(chainID), address, eventSignature, eventLog, decodedData)
-						if err != nil {
-							fmt.Printf("ERROR: Failed to process event: %v\n", err)
-							continue
-						}
-					}
+					m.ProcessLogsEvent(ctx, logs, client, eventSignature, chainID, address)
 
 					// Update the last processed block after processing each batch
 					m.mu.Lock()
@@ -309,6 +297,22 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 	}
 }
 
+func (m *Monitor) ProcessLogsEvent(ctx context.Context, logs []ethereum.Log, client *ethereum.Client, eventSignature string, chainID int64, address string) {
+	for _, eventLog := range logs {
+		decodedData, err := client.GetDecoder().DecodeEvent(eventSignature, eventLog.Data, eventLog.Topics)
+		if err != nil {
+			fmt.Printf("ERROR: Failed to decode event data: %v\n", err)
+			decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
+		}
+
+		err = m.processEvent(ctx, int(chainID), address, eventSignature, eventLog, decodedData)
+		if err != nil {
+			fmt.Printf("ERROR: Failed to process event: %v\n", err)
+			continue
+		}
+	}
+}
+
 func (m *Monitor) processEvent(ctx context.Context, chainID int, address string, eventSignature string, eventLog ethereum.Log, decodedData interface{}) error {
 	// Store event in database
 	contract, err := m.db.Contract.FindFirst(
@@ -319,6 +323,11 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 
 	if err != nil {
 		return fmt.Errorf("failed to find contract: %w", err)
+	}
+
+	if m.grpcServer == nil {
+		// If gRPC server is not running, just return
+		return nil
 	}
 
 	// Create gRPC event

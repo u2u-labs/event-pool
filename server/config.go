@@ -30,8 +30,11 @@ type Config struct {
 
 	LogLevel zapcore.Level
 
-	DbUrl     string
-	BlockTime uint64
+	DbUrl              string
+	BlockTime          uint64
+	PriceLimit         uint64
+	MaxAccountEnqueued uint64
+	MaxSlots           uint64
 
 	EthereumRpc        *EthereumRpc
 	NodeStorageAddress string

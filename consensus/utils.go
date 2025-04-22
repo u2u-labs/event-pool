@@ -7,6 +7,7 @@ import (
 // BuildBlockParams are parameters passed into the BuildBlock helper method
 type BuildBlockParams struct {
 	Header *types.Header
+	Txns   []*types.Transaction
 }
 
 // BuildBlock is a utility function that builds a block, based on the passed in header, filter and logs
