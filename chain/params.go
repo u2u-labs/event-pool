@@ -6,9 +6,14 @@ import (
 
 // Params are all the set of params for the chain
 type Params struct {
-	Forks      *Forks      `json:"forks" yaml:"forks"`
-	ChainID    int         `json:"chain_id" yaml:"chain_id"`
-	Whitelists *Whitelists `json:"whitelists,omitempty" yaml:"whitelists"`
+	Forks              *Forks      `json:"forks" yaml:"forks"`
+	ChainID            int         `json:"chain_id" yaml:"chain_id"`
+	Whitelists         *Whitelists `json:"whitelists,omitempty" yaml:"whitelists"`
+	BlockTime          uint64      `json:"block_time" yaml:"block_time"`
+	PriceLimit         uint64      `json:"price_limit" yaml:"price_limit"`
+	MaxAccountEnqueued uint64      `json:"max_account_enqueued" yaml:"max_account_enqueued"`
+	MaxSlots           uint64      `json:"max_slots" yaml:"max_slots"`
+	EpochSize          uint64      `json:"epoch_size" yaml:"epoch_size"`
 }
 
 // Whitelists specifies supported whitelists

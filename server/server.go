@@ -26,6 +26,7 @@ import (
 	"event-pool/state"
 	itrie "event-pool/state/immutable-trie"
 	"event-pool/txpool"
+	proto2 "event-pool/txpool/proto"
 	"event-pool/types"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
@@ -358,10 +359,18 @@ func (s *Server) setupHTTP() error {
 	if err != nil {
 		return err
 	}
+	if err = proto2.RegisterTxnPoolOperatorHandlerFromEndpoint(
+		context.Background(),
+		gwMux,
+		s.config.GRPCAddr.String(),
+		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}); err != nil {
+		return err
+	}
 
 	// Optionally wrap with custom routes like /health
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", gwMux)
+	httpMux.HandleFunc("/ws", s.txpool.HandleWs)
 
 	srv := &http.Server{
 		Handler:           httpMux,

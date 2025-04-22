@@ -43,12 +43,6 @@ service System {
       get: "/health"
     };
   };
-
-  rpc Subscribe(google.protobuf.Empty) returns (stream AnyMessage) {
-    option (google.api.http) = {
-      get: "/subscribe"
-    };
-  }
 }
 
 message ServerStatus {
@@ -88,8 +82,5 @@ message BlockResponse {
 message HealthResponse {
   repeated int64 chain_ids = 1;
   uint64 block_height = 2;
-}
-
-message AnyMessage {
-  string message = 1;
+  uint64 current_subscribers = 3;
 }

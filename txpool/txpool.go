@@ -181,6 +181,9 @@ type TxPool struct {
 	// Event manager for txpool events
 	eventManager *eventManager
 
+	// Event manager for user subscription events
+	eventManager2 *eventManager
+
 	// deploymentWhitelist map
 	deploymentWhitelist deploymentWhitelist
 
@@ -251,6 +254,7 @@ func NewTxPool(
 
 	// Attach the event manager
 	pool.eventManager = newEventManager(pool.logger)
+	pool.eventManager2 = newEventManager(pool.logger.Named("user"))
 
 	if network != nil {
 		// subscribe to the gossip protocol
@@ -318,6 +322,10 @@ func (p *TxPool) Start() {
 func (p *TxPool) Close() {
 	p.eventManager.Close()
 	p.shutdownCh <- struct{}{}
+}
+
+func (p *TxPool) GetTotalSubscribers() int64 {
+	return p.eventManager2.GetTotalSubscribers()
 }
 
 // SetSigner sets the signer the pool will use

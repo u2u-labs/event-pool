@@ -105,3 +105,7 @@ func (em *eventManager) signalEvent(eventType proto.EventType, txHashes ...types
 		}
 	}
 }
+
+func (em *eventManager) GetTotalSubscribers() int64 {
+	return em.numSubscriptions
+}

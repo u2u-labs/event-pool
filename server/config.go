@@ -35,6 +35,7 @@ type Config struct {
 	PriceLimit         uint64
 	MaxAccountEnqueued uint64
 	MaxSlots           uint64
+	EpochSize          uint64
 
 	EthereumRpc        *EthereumRpc
 	NodeStorageAddress string

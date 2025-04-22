@@ -26,7 +26,6 @@ import (
 )
 
 const (
-	DefaultEpochSize     = 150
 	defaultCacheSize int = 100 // The default size for Blockchain LRU cache structures
 )
 

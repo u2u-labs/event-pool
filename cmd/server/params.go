@@ -135,6 +135,11 @@ func (p *serverParams) generateConfig() *server.Config {
 		SecretsManager:     p.secretsConfig,
 		LogLevel:           lvl,
 		DbUrl:              p.rawConfig.Database.Url,
+		BlockTime:          p.rawConfig.NodeChain.Params.BlockTime,
+		PriceLimit:         p.rawConfig.NodeChain.Params.PriceLimit,
+		MaxAccountEnqueued: p.rawConfig.NodeChain.Params.MaxAccountEnqueued,
+		MaxSlots:           p.rawConfig.NodeChain.Params.MaxSlots,
+		EpochSize:          p.rawConfig.NodeChain.Params.EpochSize,
 		EthereumRpc:        p.rawConfig.EthereumRpc,
 		NodeStorageAddress: p.rawConfig.NodeStorageAddress,
 	}

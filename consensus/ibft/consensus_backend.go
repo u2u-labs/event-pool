@@ -18,16 +18,12 @@ func (i *backendIBFT) BuildProposal(blockNumber uint64) []byte {
 		latestHeader = i.blockchain.Header()
 	)
 
-	now := time.Now()
-
 	block, err := i.buildBlock(latestHeader)
 	if err != nil {
 		i.logger.Errorw("cannot build block", "num", blockNumber, "err", err)
 
 		return nil
 	}
-
-	i.logger.Debugw("building block time", "height", blockNumber, "t", time.Since(now))
 
 	return block.MarshalRLP()
 }

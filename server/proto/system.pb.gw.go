@@ -164,23 +164,6 @@ func local_request_System_Health_0(ctx context.Context, marshaler runtime.Marsha
 
 }
 
-func request_System_Subscribe_0(ctx context.Context, marshaler runtime.Marshaler, client SystemClient, req *http.Request, pathParams map[string]string) (System_SubscribeClient, runtime.ServerMetadata, error) {
-	var protoReq emptypb.Empty
-	var metadata runtime.ServerMetadata
-
-	stream, err := client.Subscribe(ctx, &protoReq)
-	if err != nil {
-		return nil, metadata, err
-	}
-	header, err := stream.Header()
-	if err != nil {
-		return nil, metadata, err
-	}
-	metadata.HeaderMD = header
-	return stream, metadata, nil
-
-}
-
 // RegisterSystemHandlerServer registers the http handlers for service System to "mux".
 // UnaryRPC     :call SystemServer directly.
 // StreamingRPC :currently unsupported pending https://github.com/grpc/grpc-go/issues/906.
@@ -311,13 +294,6 @@ func RegisterSystemHandlerServer(ctx context.Context, mux *runtime.ServeMux, ser
 
 		forward_System_Health_0(annotatedContext, mux, outboundMarshaler, w, req, resp, mux.GetForwardResponseOptions()...)
 
-	})
-
-	mux.Handle("GET", pattern_System_Subscribe_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		err := status.Error(codes.Unimplemented, "streaming calls are not yet supported in the in-process transport")
-		_, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-		return
 	})
 
 	return nil
@@ -471,28 +447,6 @@ func RegisterSystemHandlerClient(ctx context.Context, mux *runtime.ServeMux, cli
 
 	})
 
-	mux.Handle("GET", pattern_System_Subscribe_0, func(w http.ResponseWriter, req *http.Request, pathParams map[string]string) {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		inboundMarshaler, outboundMarshaler := runtime.MarshalerForRequest(mux, req)
-		var err error
-		var annotatedContext context.Context
-		annotatedContext, err = runtime.AnnotateContext(ctx, mux, req, "/v1.System/Subscribe", runtime.WithHTTPPathPattern("/subscribe"))
-		if err != nil {
-			runtime.HTTPError(ctx, mux, outboundMarshaler, w, req, err)
-			return
-		}
-		resp, md, err := request_System_Subscribe_0(annotatedContext, inboundMarshaler, client, req, pathParams)
-		annotatedContext = runtime.NewServerMetadataContext(annotatedContext, md)
-		if err != nil {
-			runtime.HTTPError(annotatedContext, mux, outboundMarshaler, w, req, err)
-			return
-		}
-
-		forward_System_Subscribe_0(annotatedContext, mux, outboundMarshaler, w, req, func() (proto.Message, error) { return resp.Recv() }, mux.GetForwardResponseOptions()...)
-
-	})
-
 	return nil
 }
 
@@ -506,8 +460,6 @@ var (
 	pattern_System_PeersStatus_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0, 1, 0, 4, 1, 5, 1}, []string{"peers", "id"}, ""))
 
 	pattern_System_Health_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"health"}, ""))
-
-	pattern_System_Subscribe_0 = runtime.MustPattern(runtime.NewPattern(1, []int{2, 0}, []string{"subscribe"}, ""))
 )
 
 var (
@@ -520,6 +472,4 @@ var (
 	forward_System_PeersStatus_0 = runtime.ForwardResponseMessage
 
 	forward_System_Health_0 = runtime.ForwardResponseMessage
-
-	forward_System_Subscribe_0 = runtime.ForwardResponseStream
 )

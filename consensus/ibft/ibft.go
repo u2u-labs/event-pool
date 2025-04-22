@@ -94,7 +94,7 @@ type backendIBFT struct {
 func Factory(params *consensus.Params) (consensus.Consensus, error) {
 	// defaults for user set fields in genesis
 	var (
-		epochSize          = uint64(blockchain.DefaultEpochSize)
+		epochSize          = params.Config.Params.EpochSize
 		quorumSizeBlockNum = uint64(0)
 	)
 
@@ -143,7 +143,7 @@ func Factory(params *consensus.Params) (consensus.Consensus, error) {
 			params.Logger,
 			params.Network,
 			params.Blockchain,
-			time.Duration(params.BlockTime)*3*time.Second,
+			time.Duration(params.BlockTime)*time.Second,
 		),
 		secretsManager: params.SecretsManager,
 		Grpc:           params.Grpc,

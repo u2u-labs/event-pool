@@ -6,7 +6,6 @@ import (
 	"event-pool/network/common"
 	"event-pool/server/proto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"google.golang.org/grpc"
 	empty "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -106,15 +105,12 @@ func (s *systemService) Health(ctx context.Context, req *empty.Empty) (*proto.He
 	if header != nil {
 		height = header.Number
 	}
+
 	resp := &proto.HealthResponse{
-		ChainIds:    []int64{int64(s.server.chain.Params.ChainID)},
-		BlockHeight: height,
+		ChainIds:           []int64{int64(s.server.chain.Params.ChainID)},
+		BlockHeight:        height,
+		CurrentSubscribers: uint64(s.server.txpool.GetTotalSubscribers()),
 	}
 
 	return resp, nil
-}
-
-// TODO: handle client ws subscribe
-func (s *systemService) Subscribe(req *empty.Empty, stream grpc.ServerStreamingServer[proto.AnyMessage]) error {
-	return nil
 }
