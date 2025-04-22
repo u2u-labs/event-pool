@@ -132,7 +132,7 @@ func (i *backendIBFT) CalcNextProposer(height uint64, round uint64) []byte {
 	// Get the header of the block before the given height.
 	previousHeader, exists := i.blockchain.GetHeaderByNumber(height - 1)
 	if !exists {
-		i.logger.Error("header not found", "height", height-1)
+		i.logger.Errorw("header not found", "height", height-1)
 
 		return nil
 	}
@@ -140,7 +140,7 @@ func (i *backendIBFT) CalcNextProposer(height uint64, round uint64) []byte {
 	// Extract the previous proposer from the previous header.
 	previousProposer, err := i.extractProposer(previousHeader)
 	if err != nil {
-		i.logger.Error("failed to extract the last proposer", "height", height-1, "err", err)
+		i.logger.Errorw("failed to extract the last proposer", "height", height-1, "err", err)
 
 		return nil
 	}

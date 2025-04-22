@@ -15,6 +15,7 @@ import (
 	"event-pool/consensus"
 	"event-pool/consensus/ibft"
 	"event-pool/crypto"
+	"event-pool/helper/common"
 	configHelper "event-pool/helper/config"
 	"event-pool/helper/keccak"
 	db2 "event-pool/internal/db"
@@ -112,10 +113,10 @@ func NewServer(config *Config) (*Server, error) {
 	m.logger.Infow("Data dir", "path", config.DataDir)
 	m.logger.Infow("Config", "config", config)
 
-	//// Generate all the paths in the dataDir
-	//if err := common.SetupDataDir(config.DataDir, dirPaths); err != nil {
-	//	return nil, fmt.Errorf("failed to create data directories: %w", err)
-	//}
+	// Generate all the paths in the dataDir
+	if err := common.SetupDataDir(config.DataDir, dirPaths); err != nil {
+		return nil, fmt.Errorf("failed to create data directories: %w", err)
+	}
 
 	if config.Telemetry.PrometheusAddr != nil {
 		m.serverMetrics = metricProvider("event-pool", config.Chain.Name, true)
@@ -150,7 +151,8 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	// start blockchain object
-	stateStorage, err := itrie.NewPrismaStorage(m.db, logger.Named("trie"))
+	//stateStorage, err := itrie.NewPrismaStorage(m.db, logger.Named("trie"))
+	stateStorage, err := itrie.NewLevelDBStorage(filepath.Join(m.config.DataDir, "trie"), logger)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +173,7 @@ func NewServer(config *Config) (*Server, error) {
 	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
 	cfg.Genesis.ChainId = uint64(m.config.Chain.Params.ChainID)
 	// blockchain object
-	m.blockchain, err = blockchain.NewBlockchain(logger, cfg, nil, m.executor, signer)
+	m.blockchain, err = blockchain.NewBlockchain(logger, m.config.DataDir, cfg, nil, m.executor, signer)
 	if err != nil {
 		return nil, err
 	}

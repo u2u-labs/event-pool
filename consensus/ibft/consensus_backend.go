@@ -22,12 +22,12 @@ func (i *backendIBFT) BuildProposal(blockNumber uint64) []byte {
 
 	block, err := i.buildBlock(latestHeader)
 	if err != nil {
-		i.logger.Error("cannot build block", "num", blockNumber, "err", err)
+		i.logger.Errorw("cannot build block", "num", blockNumber, "err", err)
 
 		return nil
 	}
 
-	i.logger.Debug("building block time", "height", blockNumber, "t", time.Since(now))
+	i.logger.Debugw("building block time", "height", blockNumber, "t", time.Since(now))
 
 	return block.MarshalRLP()
 }
@@ -71,7 +71,7 @@ func (i *backendIBFT) InsertBlock(
 				hex.EncodeToHex(seal.Signer),
 				hex.EncodeToHex(seal.Signature))
 		}
-		i.logger.Error("cannot write block: corrupted extra data",
+		i.logger.Errorw("cannot write block: corrupted extra data",
 			"err", err,
 			"committedSeals", committedSealsStr)
 
@@ -82,7 +82,7 @@ func (i *backendIBFT) InsertBlock(
 
 	// Save the block locally
 	if err := i.blockchain.WriteBlock(newBlock, "consensus"); err != nil {
-		i.logger.Error("cannot write block", "err", err)
+		i.logger.Errorw("cannot write block", "err", err)
 
 		return
 	}
@@ -120,7 +120,7 @@ func (i *backendIBFT) MaximumFaultyNodes() uint64 {
 func (i *backendIBFT) Quorum(blockNumber uint64) uint64 {
 	validators, err := i.forkManager.GetValidators(blockNumber)
 	if err != nil {
-		i.logger.Error(
+		i.logger.Errorw(
 			"failed to get validators when calculation quorum",
 			"height", blockNumber,
 			"err", err,
@@ -278,7 +278,7 @@ func (i *backendIBFT) writeTransactions(
 	)
 
 	defer func() {
-		i.logger.Info(
+		i.logger.Infow(
 			"executed txs",
 			"successful", successful,
 			"failed", failed,

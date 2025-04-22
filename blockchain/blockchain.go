@@ -4,10 +4,13 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 
 	"event-pool/blockchain/storage"
+	"event-pool/blockchain/storage/leveldb"
+	"event-pool/blockchain/storage/memory"
 	"event-pool/blockchain/storage/prismadb"
 	db2 "event-pool/internal/db"
 	"event-pool/internal/monitor"
@@ -89,6 +92,7 @@ type TxSigner interface {
 // NewBlockchain creates a new blockchain object
 func NewBlockchain(
 	logger *zap.SugaredLogger,
+	dataDir string,
 	config *chain.NodeChain,
 	consensus Verifier,
 	executor Executor,
@@ -119,6 +123,18 @@ func NewBlockchain(
 		dbClient,
 	); err != nil {
 		return nil, err
+	}
+	if dataDir == "" {
+		if db, err = memory.NewMemoryStorage(nil); err != nil {
+			return nil, err
+		}
+	} else {
+		if db, err = leveldb.NewLevelDBStorage(
+			filepath.Join(dataDir, "blockchain"),
+			logger,
+		); err != nil {
+			return nil, err
+		}
 	}
 
 	b.db = db

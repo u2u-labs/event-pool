@@ -9,3 +9,5 @@ event-pool
 data/**
 !data/temp/
 !data/temp/**
+data/temp/blockchain
+data/temp/trie

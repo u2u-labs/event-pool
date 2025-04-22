@@ -6,6 +6,7 @@ import (
 	"event-pool/network/common"
 	"event-pool/server/proto"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"google.golang.org/grpc"
 	empty "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -100,11 +101,20 @@ func (s *systemService) PeersList(
 }
 
 func (s *systemService) Health(ctx context.Context, req *empty.Empty) (*proto.HealthResponse, error) {
-	// TODO: get block height from db
+	header := s.server.blockchain.Header()
+	height := uint64(0)
+	if header != nil {
+		height = header.Number
+	}
 	resp := &proto.HealthResponse{
 		ChainIds:    []int64{int64(s.server.chain.Params.ChainID)},
-		BlockHeight: 0,
+		BlockHeight: height,
 	}
 
 	return resp, nil
+}
+
+// TODO: handle client ws subscribe
+func (s *systemService) Subscribe(req *empty.Empty, stream grpc.ServerStreamingServer[proto.AnyMessage]) error {
+	return nil
 }

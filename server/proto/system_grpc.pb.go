@@ -25,6 +25,7 @@ const (
 	System_PeersList_FullMethodName   = "/v1.System/PeersList"
 	System_PeersStatus_FullMethodName = "/v1.System/PeersStatus"
 	System_Health_FullMethodName      = "/v1.System/Health"
+	System_Subscribe_FullMethodName   = "/v1.System/Subscribe"
 )
 
 // SystemClient is the client API for System service.
@@ -41,6 +42,7 @@ type SystemClient interface {
 	PeersStatus(ctx context.Context, in *PeersStatusRequest, opts ...grpc.CallOption) (*Peer, error)
 	// Check health
 	Health(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthResponse, error)
+	Subscribe(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AnyMessage], error)
 }
 
 type systemClient struct {
@@ -101,6 +103,25 @@ func (c *systemClient) Health(ctx context.Context, in *emptypb.Empty, opts ...gr
 	return out, nil
 }
 
+func (c *systemClient) Subscribe(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AnyMessage], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &System_ServiceDesc.Streams[0], System_Subscribe_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[emptypb.Empty, AnyMessage]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type System_SubscribeClient = grpc.ServerStreamingClient[AnyMessage]
+
 // SystemServer is the server API for System service.
 // All implementations must embed UnimplementedSystemServer
 // for forward compatibility.
@@ -115,6 +136,7 @@ type SystemServer interface {
 	PeersStatus(context.Context, *PeersStatusRequest) (*Peer, error)
 	// Check health
 	Health(context.Context, *emptypb.Empty) (*HealthResponse, error)
+	Subscribe(*emptypb.Empty, grpc.ServerStreamingServer[AnyMessage]) error
 	mustEmbedUnimplementedSystemServer()
 }
 
@@ -139,6 +161,9 @@ func (UnimplementedSystemServer) PeersStatus(context.Context, *PeersStatusReques
 }
 func (UnimplementedSystemServer) Health(context.Context, *emptypb.Empty) (*HealthResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Health not implemented")
+}
+func (UnimplementedSystemServer) Subscribe(*emptypb.Empty, grpc.ServerStreamingServer[AnyMessage]) error {
+	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
 }
 func (UnimplementedSystemServer) mustEmbedUnimplementedSystemServer() {}
 func (UnimplementedSystemServer) testEmbeddedByValue()                {}
@@ -251,6 +276,17 @@ func _System_Health_Handler(srv interface{}, ctx context.Context, dec func(inter
 	return interceptor(ctx, in, info, handler)
 }
 
+func _System_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(emptypb.Empty)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(SystemServer).Subscribe(m, &grpc.GenericServerStream[emptypb.Empty, AnyMessage]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type System_SubscribeServer = grpc.ServerStreamingServer[AnyMessage]
+
 // System_ServiceDesc is the grpc.ServiceDesc for System service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -279,6 +315,12 @@ var System_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _System_Health_Handler,
 		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "Subscribe",
+			Handler:       _System_Subscribe_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "server/proto/system.proto",
 }
