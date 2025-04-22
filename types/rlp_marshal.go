@@ -116,3 +116,37 @@ func (h *Header) MarshalRLPWith(arena *fastrlp.Arena) *fastrlp.Value {
 //
 //	return v
 //}
+
+func (t *Transaction) MarshalRLP() []byte {
+	return t.MarshalRLPTo(nil)
+}
+
+func (t *Transaction) MarshalRLPTo(dst []byte) []byte {
+	return MarshalRLPTo(t.MarshalRLPWith, dst)
+}
+
+// MarshalRLPWith marshals the transaction to RLP with a specific fastrlp.Arena
+func (t *Transaction) MarshalRLPWith(arena *fastrlp.Arena) *fastrlp.Value {
+	vv := arena.NewArray()
+
+	vv.Set(arena.NewUint(t.Nonce))
+	vv.Set(arena.NewBigInt(t.GasPrice))
+	vv.Set(arena.NewUint(t.Gas))
+
+	// Address may be empty
+	if t.To != nil {
+		vv.Set(arena.NewBytes((*t.To).Bytes()))
+	} else {
+		vv.Set(arena.NewNull())
+	}
+
+	vv.Set(arena.NewBigInt(t.Value))
+	vv.Set(arena.NewCopyBytes(t.Input))
+
+	// signature values
+	vv.Set(arena.NewBigInt(t.V))
+	vv.Set(arena.NewBigInt(t.R))
+	vv.Set(arena.NewBigInt(t.S))
+
+	return vv
+}

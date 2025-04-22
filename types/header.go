@@ -90,6 +90,7 @@ func (h *Header) Copy() *Header {
 type Block struct {
 	Header *Header
 
+	Transactions []*Transaction
 	// Cache
 	size atomic.Value // *uint64
 }
