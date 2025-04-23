@@ -273,15 +273,18 @@ func (b *Blockchain) executeBlockTransactions(block *types.Block) (*BlockResult,
 		return nil, err
 	}
 
+	b.logger.Debugw("begin", "stateRoot", parent.StateRoot, "blockNumber", header.Number)
 	txn, err := b.executor.ProcessBlock(parent.StateRoot, block, blockCreator)
 	if err != nil {
 		return nil, err
 	}
 
 	_, root := txn.Commit()
+	b.logger.Debugw("end", "stateRoot", root, "blockNumber", header.Number)
 
 	return &BlockResult{
-		Root: root,
+		Root:   root,
+		logger: b.logger.Named("syncer_rs"),
 	}, nil
 }
 
@@ -343,7 +346,7 @@ func (b *Blockchain) verifyBlockParent(childBlock *types.Block) error {
 	}
 
 	// Make sure the hash is valid
-	if parent.Hash == types.ZeroHash {
+	if parent.Hash == types.ZeroHash && parent.Number != 0 {
 		return ErrInvalidParentHash
 	}
 
@@ -387,14 +390,18 @@ func (b *Blockchain) verifyBlockBody(block *types.Block) error {
 // verifyBlockResult verifies that the block transaction execution result
 // matches up to the expected values
 func (br *BlockResult) verifyBlockResult(referenceBlock *types.Block) error {
-	if br.Root != referenceBlock.Header.Hash {
+	if br.Root != referenceBlock.Header.StateRoot {
 		// This log message is used to report a mismatch between the block result root and the reference block state root.
 		// The message includes the block number, the expected state root, and the received state root.
-		br.logger.Error(fmt.Sprintf(
-			"state hash hash mismatch: have %s, want %s",
+		br.logger.Errorw(
+			"state hash mismatch",
+			"blockResult.Root",
 			br.Root,
-			referenceBlock.Header.Hash,
-		))
+			"refStateRoot",
+			referenceBlock.Header.StateRoot,
+			"refNumber",
+			referenceBlock.Header.Number,
+		)
 		return ErrInvalidStateRoot
 	}
 
@@ -458,7 +465,64 @@ func (b *Blockchain) GetBlockByHash(hash types.Hash, full bool) (*types.Block, b
 		return block, true
 	}
 
+	// Load the entire block body
+	body, ok := b.readBody(hash)
+	if !ok {
+		return block, false
+	}
+
+	// Set the transactions and uncles
+	block.Transactions = body.Transactions
+
 	return block, true
+}
+
+// readBody reads the block's body, using the block hash
+func (b *Blockchain) readBody(hash types.Hash) (*types.Body, bool) {
+	bb, err := b.db.ReadBody(hash)
+	if err != nil {
+		b.logger.Error("failed to read body", "err", err)
+
+		return nil, false
+	}
+
+	// To return from field in the transactions of the past blocks
+	if updated := b.recoverFromFieldsInTransactions(bb.Transactions); updated {
+		if err := b.db.WriteBody(hash, bb); err != nil {
+			b.logger.Warn("failed to write body into storage", "hash", hash, "err", err)
+		}
+	}
+
+	return bb, true
+}
+
+// recoverFromFieldsInTransactions recovers 'from' fields in the transactions
+// log as warning if failing to recover one address
+func (b *Blockchain) recoverFromFieldsInTransactions(transactions []*types.Transaction) bool {
+	updated := false
+
+	for _, tx := range transactions {
+		if tx.From != types.ZeroAddress {
+			continue
+		}
+
+		sender, err := b.txSigner.Sender(tx)
+		if err != nil {
+			b.logger.Warn("failed to recover from address in Tx", "hash", tx.Hash, "err", err)
+
+			continue
+		}
+
+		tx.From = sender
+		updated = true
+	}
+
+	return updated
+}
+
+// GetBodyByHash returns the body by their hash
+func (b *Blockchain) GetBodyByHash(hash types.Hash) (*types.Body, bool) {
+	return b.readBody(hash)
 }
 
 // GetBlockByNumber returns the block using the block number
@@ -562,6 +626,10 @@ func (b *Blockchain) WriteBlock(block *types.Block, source string) error {
 
 	header := block.Header
 
+	if err := b.writeBody(block); err != nil {
+		return err
+	}
+
 	// Write the header to the chain
 	evnt := &Event{Source: source}
 	if err := b.writeHeaderImpl(evnt, header); err != nil {
@@ -607,6 +675,50 @@ func (b *Blockchain) writeHeaderImpl(evnt *Event, header *types.Header) error {
 
 	// Update the headers cache
 	b.headersCache.Add(header.Hash, header)
+
+	return nil
+}
+
+// writeBody writes the block body to the DB.
+// Additionally, it also updates the txn lookup, for txnHash -> block lookups
+func (b *Blockchain) writeBody(block *types.Block) error {
+	// Recover 'from' field in tx before saving
+	// Because the block passed from the consensus layer doesn't have from field in tx,
+	// due to missing encoding in RLP
+	if err := b.recoverFromFieldsInBlock(block); err != nil {
+		return err
+	}
+
+	// Write the full body (txns + receipts)
+	if err := b.db.WriteBody(block.Header.Hash, block.Body()); err != nil {
+		return err
+	}
+
+	// Write txn lookups (txHash -> block)
+	for _, txn := range block.Transactions {
+		if err := b.db.WriteTxLookup(txn.Hash, block.Hash()); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// recoverFromFieldsInBlock recovers 'from' fields in the transactions of the given block
+// return error if the invalid signature found
+func (b *Blockchain) recoverFromFieldsInBlock(block *types.Block) error {
+	for _, tx := range block.Transactions {
+		if tx.From != types.ZeroAddress {
+			continue
+		}
+
+		sender, err := b.txSigner.Sender(tx)
+		if err != nil {
+			return err
+		}
+
+		tx.From = sender
+	}
 
 	return nil
 }

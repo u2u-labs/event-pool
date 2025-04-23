@@ -502,7 +502,7 @@ func (s *Server) removePeerInfo(peerID peer.ID) *PeerConnInfo {
 	connectionInfo, ok := s.peers[peerID]
 	if !ok {
 		// Peer is not present in the peers map
-		s.logger.Warn(
+		s.logger.Warnw(
 			fmt.Sprintf("Attempted removing missing peer info %s", peerID),
 		)
 
@@ -665,7 +665,7 @@ func (s *Server) emitEvent(peerID peer.ID, peerEventType peerEvent.PeerEventType
 		PeerID: peerID,
 		Type:   peerEventType,
 	}); err != nil {
-		s.logger.Info("failed to emit event", "peer", peerID, "type", peerEventType, "err", err)
+		s.logger.Errorw("failed to emit event", "peer", peerID, "type", peerEventType, "err", err)
 	}
 }
 

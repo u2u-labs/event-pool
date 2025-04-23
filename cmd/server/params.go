@@ -100,11 +100,32 @@ func (p *serverParams) isDNSAddressSet() bool {
 }
 
 func (p *serverParams) setRawGRPCAddress(grpcAddress string) {
+	if grpcAddress == "" {
+		return
+	}
 	p.rawConfig.GRPCAddr = grpcAddress
 }
 
 func (p *serverParams) setRawJSONRPCAddress(jsonRPCAddress string) {
+	if jsonRPCAddress == "" {
+		return
+	}
 	p.rawConfig.JSONRPCAddr = jsonRPCAddress
+}
+
+func (p *serverParams) setRawLibp2p(libp2p string) {
+	if libp2p == "" {
+		return
+	}
+	p.rawConfig.LibP2PAddr = libp2p
+	p.rawConfig.Network.Libp2pAddr = libp2p
+}
+
+func (p *serverParams) setRawDataDir(dataDir string) {
+	if dataDir == "" {
+		return
+	}
+	p.rawConfig.DataDir = dataDir
 }
 
 func (p *serverParams) generateConfig() *server.Config {

@@ -238,9 +238,9 @@ func (a *account) enqueue(tx *types.Transaction) error {
 	}
 
 	// reject low nonce tx
-	if tx.Nonce < a.getNonce() {
-		return ErrNonceTooLow
-	}
+	//if tx.Nonce < a.getNonce() {
+	//	return ErrNonceTooLow
+	//}
 
 	// enqueue tx
 	a.enqueued.push(tx)

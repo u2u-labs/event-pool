@@ -770,7 +770,7 @@ func (p *TxPool) handleEnqueueRequest(req enqueueRequest) {
 
 	// enqueue tx
 	if err := account.enqueue(tx); err != nil {
-		p.logger.Error("enqueue request", "err", err)
+		p.logger.Errorw("enqueue request", "err", err)
 
 		p.index.remove(tx)
 

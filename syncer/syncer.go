@@ -189,7 +189,7 @@ func (s *syncer) Sync(callback func(*types.Block) bool) error {
 		// fetch block from the peer
 		lastNumber, shouldTerminate, err := s.bulkSyncWithPeer(bestPeer.ID, callback)
 		if err != nil {
-			s.logger.Warn("failed to complete bulk sync with peer, try to next one", "peer ID", bestPeer.ID, "error", err, "number", bestPeer.Number)
+			s.logger.Warnw("failed to complete bulk sync with peer, try to next one", "peer ID", bestPeer.ID, "error", err, "number", bestPeer.Number)
 		}
 
 		if lastNumber < bestPeer.Number {

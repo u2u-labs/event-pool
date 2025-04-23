@@ -149,6 +149,7 @@ func (i *backendIBFT) buildBlock(parent *types.Header) (*types.Block, error) {
 
 	i.currentSigner.InitIBFTExtra(header, i.currentValidators, parentCommittedSeals)
 
+	i.logger.Debugw("begin", "stateRoot", parent.StateRoot, "number", header.Number)
 	transition, err := i.executor.BeginTxn(parent.StateRoot, header, i.currentSigner.Address())
 	if err != nil {
 		return nil, err
@@ -161,9 +162,13 @@ func (i *backendIBFT) buildBlock(parent *types.Header) (*types.Block, error) {
 		Header: header,
 		Txns:   txs,
 	})
+	if len(txs) > 0 {
+		i.logger.Debugw("build block", "txs", len(txs), "blockHash", block.Hash())
+	}
 
 	_, root := transition.Commit()
 	header.StateRoot = root
+	i.logger.Debugw("finish", "stateRoot", header.StateRoot, "number", header.Number)
 
 	// write the seal of the block after all the fields are completed
 	header, err = i.currentSigner.WriteProposerSeal(header)

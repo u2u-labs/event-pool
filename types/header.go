@@ -127,6 +127,16 @@ func (b *Block) String() string {
 	return str
 }
 
+func (b *Block) Body() *Body {
+	return &Body{
+		Transactions: b.Transactions,
+	}
+}
+
 func (b *Block) Number() uint64 {
 	return b.Header.Number
+}
+
+type Body struct {
+	Transactions []*Transaction
 }

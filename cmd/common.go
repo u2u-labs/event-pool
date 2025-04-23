@@ -13,6 +13,8 @@ const (
 	JSONOutputFlag  = "json"
 	GRPCAddressFlag = "grpc-address"
 	JSONRPCFlag     = "jsonrpc"
+	Libp2pFlag      = "libp2p"
+	DataDirFlag     = "data-dir"
 )
 
 // GRPCAddressFlagLEGACY Legacy flag that needs to be present to preserve backwards

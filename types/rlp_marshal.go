@@ -30,6 +30,16 @@ func (b *Block) MarshalRLPWith(ar *fastrlp.Arena) *fastrlp.Value {
 	vv := ar.NewArray()
 	vv.Set(b.Header.MarshalRLPWith(ar))
 
+	if len(b.Transactions) == 0 {
+		vv.Set(ar.NewNullArray())
+	} else {
+		v0 := ar.NewArray()
+		for _, tx := range b.Transactions {
+			v0.Set(tx.MarshalRLPWith(ar))
+		}
+		vv.Set(v0)
+	}
+
 	return vv
 }
 

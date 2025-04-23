@@ -19,6 +19,7 @@ type Config struct {
 	DataDir            string              `json:"data_dir" yaml:"data_dir"`
 	GRPCAddr           string              `json:"grpc_addr" yaml:"grpc_addr"`
 	JSONRPCAddr        string              `json:"jsonrpc_addr" yaml:"jsonrpc_addr"`
+	LibP2PAddr         string              `json:"libp2p" yaml:"libp2p"`
 	Telemetry          *Telemetry          `json:"telemetry" yaml:"telemetry"`
 	Network            *Network            `json:"network" yaml:"network"`
 	LogLevel           string              `json:"log_level" yaml:"log_level"`

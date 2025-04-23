@@ -189,7 +189,7 @@ func (i *backendIBFT) Initialize() error {
 		return err
 	}
 
-	i.logger.Info("validator key", "addr", i.currentSigner.Address().String())
+	i.logger.Infow("validator key", "addr", i.currentSigner.Address().String())
 
 	i.consensus = newIBFT(
 		i.logger.Named("consensus"),

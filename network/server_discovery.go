@@ -243,7 +243,7 @@ func (s *Server) setupDiscovery() error {
 }
 
 func (s *Server) TemporaryDialPeer(peerAddrInfo *peer.AddrInfo) {
-	s.logger.Debug("creating new temporary dial to peer", "peer", peerAddrInfo.ID)
+	s.logger.Debugw("creating new temporary dial to peer", "peer", peerAddrInfo.ID)
 	s.addToDialQueue(peerAddrInfo, common.PriorityRandomDial)
 }
 

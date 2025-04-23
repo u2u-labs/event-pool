@@ -112,6 +112,14 @@ func GetJSONRPCAddress(cmd *cobra.Command) string {
 	return cmd.Flag(cmd2.JSONRPCFlag).Value.String()
 }
 
+func GetLibp2p(cmd *cobra.Command) string {
+	return cmd.Flag(cmd2.Libp2pFlag).Value.String()
+}
+
+func GetDataDir(cmd *cobra.Command) string {
+	return cmd.Flag(cmd2.DataDirFlag).Value.String()
+}
+
 // RegisterJSONOutputFlag registers the --json output setting for all child commands
 func RegisterJSONOutputFlag(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool(

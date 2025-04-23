@@ -219,20 +219,20 @@ func (s *KeyValueStorage) WriteCanonicalHeader(h *types.Header, diff *big.Int) e
 	return nil
 }
 
-//// BODY //
-//
-//// WriteBody writes the body
-//func (s *KeyValueStorage) WriteBody(hash types.Hash, body *types.Body) error {
-//	return s.writeRLP(BODY, hash.Bytes(), body)
-//}
-//
-//// ReadBody reads the body
-//func (s *KeyValueStorage) ReadBody(hash types.Hash) (*types.Body, error) {
-//	body := &types.Body{}
-//	err := s.readRLP(BODY, hash.Bytes(), body)
-//
-//	return body, err
-//}
+// BODY //
+
+// WriteBody writes the body
+func (s *KeyValueStorage) WriteBody(hash types.Hash, body *types.Body) error {
+	return s.writeRLP(BODY, hash.Bytes(), body)
+}
+
+// ReadBody reads the body
+func (s *KeyValueStorage) ReadBody(hash types.Hash) (*types.Body, error) {
+	body := &types.Body{}
+	err := s.readRLP(BODY, hash.Bytes(), body)
+
+	return body, err
+}
 
 // SNAPSHOTS //
 

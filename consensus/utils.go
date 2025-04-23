@@ -17,6 +17,7 @@ func BuildBlock(params BuildBlockParams) *types.Block {
 	header.ComputeHash()
 
 	return &types.Block{
-		Header: header,
+		Header:       header,
+		Transactions: params.Txns,
 	}
 }

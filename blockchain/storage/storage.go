@@ -17,8 +17,14 @@ type Storage interface {
 	WriteHeadHash(h types.Hash) error
 	WriteHeadNumber(uint64) error
 
+	WriteBody(hash types.Hash, body *types.Body) error
+	ReadBody(hash types.Hash) (*types.Body, error)
+
 	WriteForks(forks []types.Hash) error
 	ReadForks() ([]types.Hash, error)
+
+	WriteTxLookup(hash types.Hash, blockHash types.Hash) error
+	ReadTxLookup(hash types.Hash) (types.Hash, bool)
 
 	WriteTotalDifficulty(hash types.Hash, diff *big.Int) error
 	ReadTotalDifficulty(hash types.Hash) (*big.Int, bool)

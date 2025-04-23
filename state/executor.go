@@ -168,7 +168,7 @@ func (t *Transition) Write(txn *types.Transaction) error {
 	msg := txn.Copy()
 	_, e := t.Apply(msg)
 	if e != nil {
-		t.logger.Error("failed to apply tx", "err", e)
+		t.logger.Errorw("failed to apply tx", "err", e)
 
 		return e
 	}

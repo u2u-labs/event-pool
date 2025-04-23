@@ -44,14 +44,29 @@ func (b *Block) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
 		return err
 	}
 
-	if len(elems) < 1 {
-		return fmt.Errorf("incorrect number of elements to decode block, expected 1 but found %d", len(elems))
+	if len(elems) < 2 {
+		return fmt.Errorf("incorrect number of elements to decode block, expected 2 but found %d", len(elems))
 	}
 
 	// header
 	b.Header = &Header{}
 	if err := b.Header.UnmarshalRLPFrom(p, elems[0]); err != nil {
 		return err
+	}
+
+	// transactions
+	txns, err := elems[1].GetElems()
+	if err != nil {
+		return err
+	}
+
+	for _, txn := range txns {
+		bTxn := &Transaction{}
+		if err := bTxn.UnmarshalRLPFrom(p, txn); err != nil {
+			return err
+		}
+
+		b.Transactions = append(b.Transactions, bTxn)
 	}
 
 	return nil
