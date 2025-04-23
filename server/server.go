@@ -32,6 +32,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -77,10 +78,20 @@ var dirPaths = []string{
 
 // newCLILogger returns minimal logger instance that sends all logs to standard output
 func newCLILogger(config *Config) *zap.SugaredLogger {
-	if config.LogLevel == zap.DebugLevel {
-		return zap.NewExample().Sugar()
+	// Create a config suitable for CLI usage
+	zapConfig := zap.NewDevelopmentConfig()
+
+	// Apply the desired log level
+	zapConfig.Level = zap.NewAtomicLevelAt(config.LogLevel)
+
+	// Optionally change encoding to "console" for better CLI readability
+	zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	logger, err := zapConfig.Build()
+	if err != nil {
+		panic(err) // or handle gracefully
 	}
-	logger, _ := zap.NewDevelopment()
+
 	return logger.Sugar()
 }
 
@@ -182,6 +193,7 @@ func NewServer(config *Config) (*Server, error) {
 	{
 		hub := &txpoolHub{
 			Blockchain: m.blockchain,
+			state:      m.state,
 		}
 
 		deploymentWhitelist, err := configHelper.GetDeploymentWhitelist(config.Chain)

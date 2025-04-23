@@ -20,6 +20,7 @@ service TxnPoolOperator {
   rpc AddTxn(AddTxnReq) returns (AddTxnResp) {
     option (google.api.http) = {
       post: "/txpool/add"
+      body: "*"
     };
   };
 
@@ -32,7 +33,7 @@ service TxnPoolOperator {
 }
 
 message AddTxnReq {
-  google.protobuf.Any raw = 1;
+  string data = 1;
   string from = 2;
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"event-pool/helper/hex"
 	"event-pool/helper/keccak"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var ZeroAddress = Address{}
@@ -210,3 +211,11 @@ var (
 	// EmptyUncleHash is the root when there are no uncles
 	EmptyUncleHash = StringToHash("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347")
 )
+
+// filter logs params
+type FilterLogsParams struct {
+	FromBlock       *big.Int
+	ToBlock         *big.Int
+	ContractAddress common.Address
+	EventSignature  common.Hash
+}

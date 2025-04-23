@@ -650,28 +650,28 @@ func (p *TxPool) validateTx(tx *types.Transaction) error {
 	//}
 
 	// Grab the state root for the latest block
-	stateRoot := p.store.Header().StateRoot
+	//stateRoot := p.store.Header().StateRoot
 
 	// Check nonce ordering
-	if p.store.GetNonce(stateRoot, tx.From) > tx.Nonce {
-		return ErrNonceTooLow
-	}
+	//if p.store.GetNonce(stateRoot, tx.From) > tx.Nonce {
+	//	return ErrNonceTooLow
+	//}
 
-	accountBalance, balanceErr := p.store.GetBalance(stateRoot, tx.From)
-	if balanceErr != nil {
-		return ErrInvalidAccountState
-	}
+	//accountBalance, balanceErr := p.store.GetBalance(stateRoot, tx.From)
+	//if balanceErr != nil {
+	//	return ErrInvalidAccountState
+	//}
+	//
+	//// Check if the sender has enough funds to execute the transaction
+	//if accountBalance.Cmp(tx.Cost()) < 0 {
+	//	return ErrInsufficientFunds
+	//}
+	//
+	//if tx.To == nil {
+	//	return nil
+	//}
 
-	// Check if the sender has enough funds to execute the transaction
-	if accountBalance.Cmp(tx.Cost()) < 0 {
-		return ErrInsufficientFunds
-	}
-
-	if tx.To == nil {
-		return nil
-	}
-
-	return ErrRejectedMethods
+	return nil
 }
 
 func (p *TxPool) signalPruning() {
@@ -721,7 +721,7 @@ func (p *TxPool) addTx(origin txOrigin, tx *types.Transaction) error {
 
 	// validate incoming tx
 	if err := p.validateTx(tx); err != nil {
-		p.logger.Error("validate transaction failed", "from", tx.From, "gasCost", tx.Cost())
+		p.logger.Errorw("validate transaction failed", "from", tx.From, "gasCost", tx.Cost())
 		return err
 	}
 
@@ -821,14 +821,14 @@ func (p *TxPool) addGossipTx(obj interface{}, _ peer.ID) {
 
 	raw, ok := obj.(*proto.Txn)
 	if !ok {
-		p.logger.Error("failed to cast gossiped message to txn")
+		p.logger.Errorw("failed to cast gossiped message to txn")
 
 		return
 	}
 
 	// Verify that the gossiped transaction message is not empty
 	if raw == nil || raw.Raw == nil {
-		p.logger.Error("malformed gossip transaction message received")
+		p.logger.Errorw("malformed gossip transaction message received")
 
 		return
 	}
@@ -837,7 +837,7 @@ func (p *TxPool) addGossipTx(obj interface{}, _ peer.ID) {
 
 	// decode tx
 	if err := tx.UnmarshalRLP(raw.Raw.Value); err != nil {
-		p.logger.Error("failed to decode broadcast tx", "err", err)
+		p.logger.Errorw("failed to decode broadcast tx", "err", err)
 
 		return
 	}
@@ -845,12 +845,12 @@ func (p *TxPool) addGossipTx(obj interface{}, _ peer.ID) {
 	// add tx
 	if err := p.addTx(gossip, tx); err != nil {
 		if errors.Is(err, ErrAlreadyKnown) {
-			p.logger.Debug("rejecting known tx (gossip)", "hash", tx.Hash.String())
+			p.logger.Debugw("rejecting known tx (gossip)", "hash", tx.Hash.String())
 
 			return
 		}
 
-		p.logger.Error("failed to add broadcast tx", "err", err, "hash", tx.Hash.String())
+		p.logger.Errorw("failed to add broadcast tx", "err", err, "hash", tx.Hash.String())
 	}
 }
 

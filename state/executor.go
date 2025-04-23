@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"math"
-	"math/big"
 
 	"event-pool/chain"
 	"event-pool/crypto"
 	"event-pool/internal/monitor"
 	"event-pool/pkg/ethereum"
 	"event-pool/types"
-	"github.com/ethereum/go-ethereum/common"
 	lru "github.com/hashicorp/golang-lru"
 	"go.uber.org/zap"
 )
@@ -201,18 +199,10 @@ func (t *Transition) Apply(msg *types.Transaction) (any, error) {
 	return result, err
 }
 
-// filter logs params
-type FilterLogsParams struct {
-	FromBlock       *big.Int
-	ToBlock         *big.Int
-	contractAddress common.Address
-	eventSignature  common.Hash
-}
-
 func (t *Transition) apply(msg *types.Transaction) (any, error) {
 	//txn := t.state
 
-	params := FilterLogsParams{}
+	params := types.FilterLogsParams{}
 	if err := json.Unmarshal(msg.Input, &params); err != nil {
 		t.logger.Errorw("failed to unmarshal logs params", "err", err)
 		return nil, err
@@ -222,8 +212,8 @@ func (t *Transition) apply(msg *types.Transaction) (any, error) {
 	// Get logs for the block range
 	logs, err := client.FilterLogs(
 		t.ctx,
-		params.contractAddress,
-		params.eventSignature,
+		params.ContractAddress,
+		params.EventSignature,
 		params.FromBlock,
 		params.ToBlock,
 		int(t.chainId),
@@ -233,7 +223,7 @@ func (t *Transition) apply(msg *types.Transaction) (any, error) {
 		return nil, err
 	}
 
-	t.FnGetMonitor().ProcessLogsEvent(t.ctx, logs, client, params.eventSignature.String(), int64(t.chainId), params.contractAddress.String())
+	t.FnGetMonitor().ProcessLogsEvent(t.ctx, logs, client, params.EventSignature.String(), int64(t.chainId), params.ContractAddress.String())
 	// just increase the nonce to change state
 	t.state.IncrNonce(msg.From)
 

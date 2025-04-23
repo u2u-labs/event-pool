@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 
+	"event-pool/helper/hex"
 	"event-pool/txpool/proto"
 	"event-pool/types"
 	"github.com/gorilla/websocket"
@@ -25,12 +26,17 @@ func (p *TxPool) Status(ctx context.Context, req *empty.Empty) (*proto.TxnPoolSt
 
 // AddTxn adds a local transaction to the pool
 func (p *TxPool) AddTxn(ctx context.Context, raw *proto.AddTxnReq) (*proto.AddTxnResp, error) {
-	if raw.Raw == nil {
+	if len(raw.Data) == 0 {
 		return nil, fmt.Errorf("transaction's field raw is empty")
 	}
 
+	txData, err := hex.DecodeHex(raw.Data)
+	if err != nil {
+		return nil, err
+	}
+
 	txn := new(types.Transaction)
-	if err := txn.UnmarshalRLP(raw.Raw.Value); err != nil {
+	if err := txn.UnmarshalRLP(txData); err != nil {
 		return nil, err
 	}
 
