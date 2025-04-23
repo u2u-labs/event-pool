@@ -11,7 +11,6 @@ import (
 	"event-pool/blockchain/storage"
 	"event-pool/blockchain/storage/leveldb"
 	"event-pool/blockchain/storage/memory"
-	"event-pool/blockchain/storage/prismadb"
 	db2 "event-pool/internal/db"
 	"event-pool/internal/monitor"
 	"event-pool/pkg/ethereum"
@@ -117,12 +116,14 @@ func NewBlockchain(
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	if db, err = prismadb.NewSQLStorage(
-		logger,
-		dbClient,
-	); err != nil {
-		return nil, err
-	}
+	// use leveldb storage instead of sql
+	//if db, err = prismadb.NewSQLStorage(
+	//	logger,
+	//	dbClient,
+	//); err != nil {
+	//	return nil, err
+	//}
+
 	if dataDir == "" {
 		if db, err = memory.NewMemoryStorage(nil); err != nil {
 			return nil, err
