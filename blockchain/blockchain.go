@@ -14,6 +14,7 @@ import (
 	db2 "event-pool/internal/db"
 	"event-pool/internal/monitor"
 	"event-pool/pkg/ethereum"
+	"event-pool/prisma/db"
 	"event-pool/state"
 	"event-pool/validators"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -42,6 +43,7 @@ var (
 type Blockchain struct {
 	logger *zap.SugaredLogger // The logger object
 
+	sqlClient *db.PrismaClient
 	db        storage.Storage // The database object
 	consensus Verifier
 	executor  Executor
@@ -138,6 +140,7 @@ func NewBlockchain(
 	}
 
 	b.db = db
+	b.sqlClient = dbClient
 
 	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient)
 	if err != nil {
@@ -726,6 +729,7 @@ func (b *Blockchain) recoverFromFieldsInBlock(block *types.Block) error {
 
 // Close closes the DB connection
 func (b *Blockchain) Close() error {
+	b.sqlClient.Disconnect()
 	return b.db.Close()
 }
 
