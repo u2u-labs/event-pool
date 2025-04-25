@@ -3,7 +3,6 @@ package network
 import (
 	"math/big"
 
-	common2 "event-pool/helper/common"
 	"event-pool/network/common"
 	peerEvent "event-pool/network/event"
 	"event-pool/network/grpc"
@@ -31,7 +30,7 @@ func (s *Server) NewIdentityClient(peerID peer.ID) (proto.IdentityClient, error)
 // AddPeer adds a new peer to the networking server's peer list,
 // and updates relevant counters and metrics
 func (s *Server) AddPeer(id peer.ID, direction network.Direction) {
-	s.logger.Info("Peer connected", "id", id.String())
+	s.logger.Infow("Peer connected", "id", id.String())
 
 	// Update the peer connection info
 	if connectionExists := s.addPeerInfo(id, direction); connectionExists {
@@ -114,7 +113,7 @@ func (s *Server) setupIdentity() error {
 	identityService := identity.NewIdentityService(
 		s,
 		s.logger,
-		common2.IntSliceToInt64Slice(s.config.Chain.Params.ChainIDs),
+		int64(s.config.Chain.Params.ChainID),
 		s.host.ID(),
 	)
 

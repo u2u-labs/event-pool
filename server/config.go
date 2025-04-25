@@ -30,7 +30,19 @@ type Config struct {
 
 	LogLevel zapcore.Level
 
-	DbUrl string
+	DbUrl              string
+	BlockTime          uint64
+	PriceLimit         uint64
+	MaxAccountEnqueued uint64
+	MaxSlots           uint64
+	EpochSize          uint64
+
+	EthereumRpc        *EthereumRpc
+	NodeStorageAddress string
+}
+
+type EthereumRpc struct {
+	Chains map[int]chain.RpcInfo `json:"chains" yaml:"chains"`
 }
 
 // Telemetry holds the config details for metric services

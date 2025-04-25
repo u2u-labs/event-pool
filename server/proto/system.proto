@@ -82,4 +82,5 @@ message BlockResponse {
 message HealthResponse {
   repeated int64 chain_ids = 1;
   uint64 block_height = 2;
+  uint64 current_subscribers = 3;
 }

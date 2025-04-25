@@ -1,0 +1,117 @@
+package signer
+
+import (
+	"crypto/ecdsa"
+	"fmt"
+	"testing"
+
+	"event-pool/crypto"
+	"event-pool/helper/keccak"
+	"event-pool/secrets"
+	"event-pool/secrets/helper"
+	"event-pool/types"
+	"event-pool/validators"
+	"github.com/umbracle/fastrlp"
+)
+
+const (
+	// legacyCommitCode is the value that is contained in
+	// legacy committed seals, so it needs to be preserved in order
+	// for new clients to read old committed seals
+	legacyCommitCode = 2
+)
+
+// wrapCommitHash calculates digest for CommittedSeal
+func wrapCommitHash(data []byte) []byte {
+	return crypto.Keccak256(data, []byte{byte(legacyCommitCode)})
+}
+
+// getOrCreateECDSAKey loads ECDSA key or creates a new key
+func getOrCreateECDSAKey(manager secrets.SecretsManager) (*ecdsa.PrivateKey, error) {
+	if !manager.HasSecret(secrets.ValidatorKey) {
+		if _, err := helper.InitECDSAValidatorKey(manager); err != nil {
+			return nil, err
+		}
+	}
+
+	keyBytes, err := manager.GetSecret(secrets.ValidatorKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return crypto.BytesToECDSAPrivateKey(keyBytes)
+}
+
+// calculateHeaderHash is hash calculation of header for IBFT
+func calculateHeaderHash(h *types.Header) types.Hash {
+	arena := fastrlp.DefaultArenaPool.Get()
+	defer fastrlp.DefaultArenaPool.Put(arena)
+
+	vv := arena.NewArray()
+	vv.Set(arena.NewBytes(h.ParentHash.Bytes()))
+	vv.Set(arena.NewUint(h.ChainId))
+	vv.Set(arena.NewBytes(h.StateRoot.Bytes()))
+	vv.Set(arena.NewBytes(h.Creator.Bytes()))
+	vv.Set(arena.NewUint(h.Number))
+	vv.Set(arena.NewUint(h.Timestamp))
+	vv.Set(arena.NewBytes(h.ExtraData))
+
+	buf := keccak.Keccak256Rlp(nil, vv)
+
+	return types.BytesToHash(buf)
+}
+
+// ecrecover recovers signer address from the given digest and signature
+func ecrecover(sig, msg []byte) (types.Address, error) {
+	pub, err := crypto.RecoverPubkey(sig, msg)
+	if err != nil {
+		return types.Address{}, err
+	}
+
+	return crypto.PubKeyToAddress(pub), nil
+}
+
+// NewKeyManagerFromType creates KeyManager based on the given type
+func NewKeyManagerFromType(
+	secretManager secrets.SecretsManager,
+	validatorType validators.ValidatorType,
+) (KeyManager, error) {
+	switch validatorType {
+	case validators.ECDSAValidatorType:
+		return NewECDSAKeyManager(secretManager)
+	default:
+		return nil, fmt.Errorf("unsupported validator type: %s", validatorType)
+	}
+}
+
+// verifyIBFTExtraSize checks whether header.ExtraData has enough size for IBFT Extra
+func verifyIBFTExtraSize(header *types.Header) error {
+	if len(header.ExtraData) < IstanbulExtraVanity {
+		return fmt.Errorf(
+			"wrong extra size, expected greater than or equal to %d but actual %d",
+			IstanbulExtraVanity,
+			len(header.ExtraData),
+		)
+	}
+
+	return nil
+}
+
+// UseIstanbulHeaderHash is a helper function for the test
+func UseIstanbulHeaderHashInTest(t *testing.T, signer Signer) {
+	t.Helper()
+
+	originalHashCalc := types.HeaderHash
+	types.HeaderHash = func(h *types.Header) types.Hash {
+		hash, err := signer.CalculateHeaderHash(h)
+		if err != nil {
+			return types.ZeroHash
+		}
+
+		return hash
+	}
+
+	t.Cleanup(func() {
+		types.HeaderHash = originalHashCalc
+	})
+}

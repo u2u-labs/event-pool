@@ -8,21 +8,25 @@ import (
 
 	"event-pool/chain"
 	"event-pool/network"
+	"event-pool/server"
 	"github.com/hashicorp/hcl"
 	"gopkg.in/yaml.v3"
 )
 
 // Config defines the server configuration params
 type Config struct {
-	SecretsConfigPath string           `json:"secrets_config" yaml:"secrets_config"`
-	DataDir           string           `json:"data_dir" yaml:"data_dir"`
-	GRPCAddr          string           `json:"grpc_addr" yaml:"grpc_addr"`
-	JSONRPCAddr       string           `json:"jsonrpc_addr" yaml:"jsonrpc_addr"`
-	Telemetry         *Telemetry       `json:"telemetry" yaml:"telemetry"`
-	Network           *Network         `json:"network" yaml:"network"`
-	LogLevel          string           `json:"log_level" yaml:"log_level"`
-	NodeChain         *chain.NodeChain `json:"node_chain" yaml:"node_chain"`
-	Database          *Database        `json:"database" yaml:"database"`
+	SecretsConfigPath  string              `json:"secrets_config" yaml:"secrets_config"`
+	DataDir            string              `json:"data_dir" yaml:"data_dir"`
+	GRPCAddr           string              `json:"grpc_addr" yaml:"grpc_addr"`
+	JSONRPCAddr        string              `json:"jsonrpc_addr" yaml:"jsonrpc_addr"`
+	LibP2PAddr         string              `json:"libp2p" yaml:"libp2p"`
+	Telemetry          *Telemetry          `json:"telemetry" yaml:"telemetry"`
+	Network            *Network            `json:"network" yaml:"network"`
+	LogLevel           string              `json:"log_level" yaml:"log_level"`
+	NodeChain          *chain.NodeChain    `json:"node_chain" yaml:"node_chain"`
+	Database           *Database           `json:"database" yaml:"database"`
+	EthereumRpc        *server.EthereumRpc `json:"ethereum" yaml:"ethereum"`
+	NodeStorageAddress string              `json:"node_storage_address" yaml:"node_storage_address"`
 }
 
 // Telemetry holds the config details for metric services.

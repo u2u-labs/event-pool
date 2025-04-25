@@ -1,18 +1,27 @@
 package monitor
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
+	"net/http"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
+	crypto2 "event-pool/crypto"
 	pb "event-pool/internal/proto"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
+	"event-pool/types"
+	"github.com/spf13/viper"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -279,17 +288,18 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 
 					fmt.Printf("Found %d logs for blocks %d to %d\n", len(logs), fromBlock, toBlock)
 
-					for _, eventLog := range logs {
-						decodedData, err := client.GetDecoder().DecodeEvent(eventSignature, eventLog.Data, eventLog.Topics)
-						if err != nil {
-							fmt.Printf("ERROR: Failed to decode event data: %v\n", err)
-							decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
-						}
+					m.ProcessLogsEvent(ctx, logs, client, eventSignature, chainID, address)
 
-						err = m.processEvent(ctx, int(chainID), address, eventSignature, eventLog, decodedData)
+					if len(logs) > 0 {
+						// add query logs as txn to the chain
+						err = m.SendTx(ctx, types.FilterLogsParams{
+							FromBlock:       big.NewInt(int64(fromBlock)),
+							ToBlock:         big.NewInt(int64(toBlock)),
+							ContractAddress: ethereum.HexToAddress(address),
+							EventSignature:  ethereum.HexToHash(eventSignature),
+						})
 						if err != nil {
-							fmt.Printf("ERROR: Failed to process event: %v\n", err)
-							continue
+							fmt.Printf("ERROR: Failed to send transaction: %v\n", err)
 						}
 					}
 
@@ -309,6 +319,22 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 	}
 }
 
+func (m *Monitor) ProcessLogsEvent(ctx context.Context, logs []ethereum.Log, client *ethereum.Client, eventSignature string, chainID int64, address string) {
+	for _, eventLog := range logs {
+		decodedData, err := client.GetDecoder().DecodeEvent(eventSignature, eventLog.Data, eventLog.Topics)
+		if err != nil {
+			fmt.Printf("ERROR: Failed to decode event data: %v\n", err)
+			decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
+		}
+
+		err = m.processEvent(ctx, int(chainID), address, eventSignature, eventLog, decodedData)
+		if err != nil {
+			fmt.Printf("ERROR: Failed to process event: %v\n", err)
+			continue
+		}
+	}
+}
+
 func (m *Monitor) processEvent(ctx context.Context, chainID int, address string, eventSignature string, eventLog ethereum.Log, decodedData interface{}) error {
 	// Store event in database
 	contract, err := m.db.Contract.FindFirst(
@@ -319,6 +345,11 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 
 	if err != nil {
 		return fmt.Errorf("failed to find contract: %w", err)
+	}
+
+	if m.grpcServer == nil {
+		// If gRPC server is not running, just return
+		return nil
 	}
 
 	// Create gRPC event
@@ -487,4 +518,76 @@ func (m *Monitor) checkForNewContracts(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (m *Monitor) SendTx(ctx context.Context, filter types.FilterLogsParams) error {
+	input, err := json.Marshal(filter)
+	if err != nil {
+		return err
+	}
+
+	addr := types.StringToAddress("0x01857E2BCFcb8B4eF76Df6590F8dCd3bf736C9E9")
+	tx := &types.Transaction{
+		Nonce:    0,
+		GasPrice: big.NewInt(1000000000),
+		Gas:      21000,
+		To:       &addr,
+		Value:    big.NewInt(1000000000000000000),
+		Input:    input,
+	}
+
+	secretBytes, err := os.ReadFile(filepath.Join(viper.GetString("data_dir"), "consensus/validator.key"))
+	if err != nil {
+		return err
+	}
+	priv, err := crypto2.BytesToECDSAPrivateKey(secretBytes)
+	if err != nil {
+		return err
+	}
+
+	rawBytes, err := ethereum.SignTransaction(tx, priv)
+	if err != nil {
+		return err
+	}
+
+	dataBytes := fmt.Sprintf("0x%x", rawBytes)
+	bodyData := map[string]string{
+		"data": dataBytes,
+		"from": "",
+	}
+	payload, err := json.Marshal(bodyData)
+	if err != nil {
+		return err
+	}
+
+	// send post request to the server
+	resp, err := http.Post(
+		fmt.Sprintf("http://localhost%s/txpool/add",
+			viper.GetString("jsonrpc_addr")),
+		"application/json",
+		bytes.NewBuffer(payload),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to send transaction: %s", resp.Status)
+	}
+
+	// read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	// parse response body
+	var response map[string]interface{}
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Transaction ID: %s\n", response["txHash"])
+
+	return nil
 }

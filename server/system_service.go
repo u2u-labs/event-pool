@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 
-	common2 "event-pool/helper/common"
 	"event-pool/network/common"
 	"event-pool/server/proto"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -101,10 +100,16 @@ func (s *systemService) PeersList(
 }
 
 func (s *systemService) Health(ctx context.Context, req *empty.Empty) (*proto.HealthResponse, error) {
-	// TODO: get block height from db
+	header := s.server.blockchain.Header()
+	height := uint64(0)
+	if header != nil {
+		height = header.Number
+	}
+
 	resp := &proto.HealthResponse{
-		ChainIds:    common2.IntSliceToInt64Slice(s.server.chain.Params.ChainIDs),
-		BlockHeight: 0,
+		ChainIds:           []int64{int64(s.server.chain.Params.ChainID)},
+		BlockHeight:        height,
+		CurrentSubscribers: uint64(s.server.txpool.GetTotalSubscribers()),
 	}
 
 	return resp, nil

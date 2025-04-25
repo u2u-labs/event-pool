@@ -272,7 +272,7 @@ func CreateServer(params *CreateServerParams) (*Server, error) {
 	cfg.Addr.Port = port
 	cfg.Chain = &chain.NodeChain{
 		Params: &chain.Params{
-			ChainIDs: []int{1},
+			ChainID: 1,
 		},
 	}
 

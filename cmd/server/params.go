@@ -63,9 +63,8 @@ type serverParams struct {
 	grpcAddress       *net.TCPAddr
 	jsonRPCAddress    *net.TCPAddr
 
-	blockGasTarget uint64
-	devInterval    uint64
-	isDevMode      bool
+	devInterval uint64
+	isDevMode   bool
 
 	corsAllowedOrigins []string
 
@@ -73,8 +72,6 @@ type serverParams struct {
 
 	genesisConfig *chain.NodeChain
 	secretsConfig *secrets.SecretsManagerConfig
-
-	logFileLocation string
 }
 
 func (p *serverParams) isMaxPeersSet() bool {
@@ -103,11 +100,32 @@ func (p *serverParams) isDNSAddressSet() bool {
 }
 
 func (p *serverParams) setRawGRPCAddress(grpcAddress string) {
+	if grpcAddress == "" {
+		return
+	}
 	p.rawConfig.GRPCAddr = grpcAddress
 }
 
 func (p *serverParams) setRawJSONRPCAddress(jsonRPCAddress string) {
+	if jsonRPCAddress == "" {
+		return
+	}
 	p.rawConfig.JSONRPCAddr = jsonRPCAddress
+}
+
+func (p *serverParams) setRawLibp2p(libp2p string) {
+	if libp2p == "" {
+		return
+	}
+	p.rawConfig.LibP2PAddr = libp2p
+	p.rawConfig.Network.Libp2pAddr = libp2p
+}
+
+func (p *serverParams) setRawDataDir(dataDir string) {
+	if dataDir == "" {
+		return
+	}
+	p.rawConfig.DataDir = dataDir
 }
 
 func (p *serverParams) generateConfig() *server.Config {
@@ -134,9 +152,16 @@ func (p *serverParams) generateConfig() *server.Config {
 			MaxOutboundPeers: p.rawConfig.Network.MaxOutboundPeers,
 			Chain:            p.rawConfig.NodeChain,
 		},
-		DataDir:        p.rawConfig.DataDir,
-		SecretsManager: p.secretsConfig,
-		LogLevel:       lvl,
-		DbUrl:          p.rawConfig.Database.Url,
+		DataDir:            p.rawConfig.DataDir,
+		SecretsManager:     p.secretsConfig,
+		LogLevel:           lvl,
+		DbUrl:              p.rawConfig.Database.Url,
+		BlockTime:          p.rawConfig.NodeChain.Params.BlockTime,
+		PriceLimit:         p.rawConfig.NodeChain.Params.PriceLimit,
+		MaxAccountEnqueued: p.rawConfig.NodeChain.Params.MaxAccountEnqueued,
+		MaxSlots:           p.rawConfig.NodeChain.Params.MaxSlots,
+		EpochSize:          p.rawConfig.NodeChain.Params.EpochSize,
+		EthereumRpc:        p.rawConfig.EthereumRpc,
+		NodeStorageAddress: p.rawConfig.NodeStorageAddress,
 	}
 }

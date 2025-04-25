@@ -1,0 +1,333 @@
+package types
+
+import (
+	"fmt"
+	"math/big"
+
+	"github.com/umbracle/fastrlp"
+)
+
+type RLPUnmarshaler interface {
+	UnmarshalRLP(input []byte) error
+}
+
+type unmarshalRLPFunc func(p *fastrlp.Parser, v *fastrlp.Value) error
+
+func UnmarshalRlp(obj unmarshalRLPFunc, input []byte) error {
+	pr := fastrlp.DefaultParserPool.Get()
+
+	v, err := pr.Parse(input)
+	if err != nil {
+		fastrlp.DefaultParserPool.Put(pr)
+
+		return err
+	}
+
+	if err := obj(pr, v); err != nil {
+		fastrlp.DefaultParserPool.Put(pr)
+
+		return err
+	}
+
+	fastrlp.DefaultParserPool.Put(pr)
+
+	return nil
+}
+
+func (b *Block) UnmarshalRLP(input []byte) error {
+	return UnmarshalRlp(b.UnmarshalRLPFrom, input)
+}
+
+func (b *Block) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
+	elems, err := v.GetElems()
+	if err != nil {
+		return err
+	}
+
+	if len(elems) < 2 {
+		return fmt.Errorf("incorrect number of elements to decode block, expected 2 but found %d", len(elems))
+	}
+
+	// header
+	b.Header = &Header{}
+	if err := b.Header.UnmarshalRLPFrom(p, elems[0]); err != nil {
+		return err
+	}
+
+	// transactions
+	txns, err := elems[1].GetElems()
+	if err != nil {
+		return err
+	}
+
+	for _, txn := range txns {
+		bTxn := &Transaction{}
+		if err := bTxn.UnmarshalRLPFrom(p, txn); err != nil {
+			return err
+		}
+
+		b.Transactions = append(b.Transactions, bTxn)
+	}
+
+	return nil
+}
+
+func (h *Header) UnmarshalRLP(input []byte) error {
+	return UnmarshalRlp(h.UnmarshalRLPFrom, input)
+}
+
+func (h *Header) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
+	elems, err := v.GetElems()
+	if err != nil {
+		return err
+	}
+
+	if len(elems) < 7 {
+		return fmt.Errorf("incorrect number of elements to decode header, expected 7 but found %d", len(elems))
+	}
+
+	// parentHash
+	if err = elems[0].GetHash(h.ParentHash[:]); err != nil {
+		return err
+	}
+	// chainId
+	h.ChainId, err = elems[1].GetUint64()
+	if err != nil {
+		return err
+	}
+	// stateRoot
+	if err = elems[2].GetHash(h.StateRoot[:]); err != nil {
+		return err
+	}
+
+	//// logs
+	//logsElem, err := elems[2].GetElems()
+	//if err != nil {
+	//	return err
+	//}
+	//for _, elem := range logsElem {
+	//	log := &Log{}
+	//	if err = log.UnmarshalRLPFrom(p, elem); err != nil {
+	//		return err
+	//	}
+	//	h.Logs = append(h.Logs, (*types.Log)(log))
+	//}
+	//// filter
+	//filter := &FilterQuery{}
+	//if err = filter.UnmarshalRLPFrom(p, elems[3]); err != nil {
+	//	return err
+	//}
+	// creator
+	if err := elems[3].GetAddr(h.Creator[:]); err != nil {
+		return err
+	}
+	// number
+	number, err := elems[4].GetUint64()
+	if err != nil {
+		return err
+	}
+	h.Number = number
+	// timestamp
+	ts, err := elems[5].GetUint64()
+	if err != nil {
+		return err
+	}
+	h.Timestamp = ts
+	// extraData
+	if h.ExtraData, err = elems[6].GetBytes(h.ExtraData[:0]); err != nil {
+		return err
+	}
+
+	// compute the hash after the decoding
+	h.ComputeHash()
+
+	return err
+}
+
+//func (l *Log) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
+//	elems, err := v.GetElems()
+//	if err != nil {
+//		return err
+//	}
+//
+//	if len(elems) < 8 {
+//		return fmt.Errorf("incorrect number of elements to decode log, expected 8 but found %d", len(elems))
+//	}
+//
+//	// address
+//	if err := elems[0].GetAddr(l.Address[:]); err != nil {
+//		return err
+//	}
+//	// topics
+//	topicElems, err := elems[1].GetElems()
+//	if err != nil {
+//		return err
+//	}
+//
+//	l.Topics = make([]common.Hash, len(topicElems))
+//
+//	for indx, topic := range topicElems {
+//		if err = topic.GetHash(l.Topics[indx][:]); err != nil {
+//			return err
+//		}
+//	}
+//
+//	// data
+//	if l.Data, err = elems[2].GetBytes(l.Data[:0]); err != nil {
+//		return err
+//	}
+//	// block number
+//	if l.BlockNumber, err = elems[3].GetUint64(); err != nil {
+//		return err
+//	}
+//	// tx hash
+//	if err := elems[4].GetHash(l.TxHash[:]); err != nil {
+//		return err
+//	}
+//	// tx index
+//	txIndex, err := elems[5].GetUint64()
+//	if err != nil {
+//		return err
+//	}
+//	l.TxIndex = uint(txIndex)
+//	// block hash
+//	if err := elems[6].GetHash(l.BlockHash[:]); err != nil {
+//		return err
+//	}
+//	// index
+//	index, err := elems[7].GetUint64()
+//	if err != nil {
+//		return err
+//	}
+//	l.Index = uint(index)
+//	// removed
+//	if l.Removed, err = elems[8].GetBool(); err != nil {
+//		return err
+//	}
+//
+//	return nil
+//}
+//
+//type FilterQuery ethereum.FilterQuery
+//
+//func (f *FilterQuery) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
+//	elems, err := v.GetElems()
+//	if err != nil {
+//		return err
+//	}
+//
+//	if len(elems) < 5 {
+//		return nil
+//	}
+//
+//	// from block
+//	from, err := elems[0].GetUint64()
+//	if err != nil {
+//		return err
+//	}
+//	f.FromBlock = big.NewInt(int64(from))
+//	// to block
+//	to, err := elems[1].GetUint64()
+//	if err != nil {
+//		return err
+//	}
+//	f.ToBlock = big.NewInt(int64(to))
+//	// addresses
+//	var address common.Address
+//	if err = elems[2].GetAddr(address[:]); err != nil {
+//		return err
+//	}
+//	f.Addresses = []common.Address{address}
+//	// block hash
+//	if err = elems[3].GetHash(f.BlockHash[:]); err != nil {
+//		return err
+//	}
+//	// topics
+//	topics, err := elems[4].GetElems()
+//	if err != nil {
+//		return err
+//	}
+//	f.Topics = make([][]common.Hash, len(topics))
+//	for indx, topic := range topics {
+//		topicElems, err := topic.GetElems()
+//		if err != nil {
+//			return err
+//		}
+//		f.Topics[indx] = make([]common.Hash, len(topicElems))
+//		for indx, topicElem := range topicElems {
+//			if err = topicElem.GetHash(f.Topics[indx][indx][:]); err != nil {
+//				return err
+//			}
+//		}
+//	}
+//	return nil
+//}
+
+func (t *Transaction) UnmarshalRLP(input []byte) error {
+	return UnmarshalRlp(t.UnmarshalRLPFrom, input)
+}
+
+// UnmarshalRLPFrom unmarshals a Transaction in RLP format
+func (t *Transaction) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
+	elems, err := v.GetElems()
+	if err != nil {
+		return err
+	}
+
+	if len(elems) < 9 {
+		return fmt.Errorf("incorrect number of elements to decode transaction, expected 9 but found %d", len(elems))
+	}
+
+	p.Hash(t.Hash[:0], v)
+
+	// nonce
+	if t.Nonce, err = elems[0].GetUint64(); err != nil {
+		return err
+	}
+	// gasPrice
+	t.GasPrice = new(big.Int)
+	if err := elems[1].GetBigInt(t.GasPrice); err != nil {
+		return err
+	}
+	// gas
+	if t.Gas, err = elems[2].GetUint64(); err != nil {
+		return err
+	}
+	// to
+	if vv, _ := v.Get(3).Bytes(); len(vv) == 20 {
+		// address
+		addr := BytesToAddress(vv)
+		t.To = &addr
+	} else {
+		// reset To
+		t.To = nil
+	}
+	// value
+	t.Value = new(big.Int)
+	if err := elems[4].GetBigInt(t.Value); err != nil {
+		return err
+	}
+	// input
+	if t.Input, err = elems[5].GetBytes(t.Input[:0]); err != nil {
+		return err
+	}
+
+	// V
+	t.V = new(big.Int)
+	if err = elems[6].GetBigInt(t.V); err != nil {
+		return err
+	}
+
+	// R
+	t.R = new(big.Int)
+	if err = elems[7].GetBigInt(t.R); err != nil {
+		return err
+	}
+	// S
+	t.S = new(big.Int)
+	if err = elems[8].GetBigInt(t.S); err != nil {
+		return err
+	}
+
+	return nil
+}

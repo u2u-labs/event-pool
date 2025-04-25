@@ -4,44 +4,62 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
 	"time"
 
+	"event-pool/blockchain"
 	"event-pool/chain"
+	"event-pool/consensus"
+	"event-pool/consensus/ibft"
+	"event-pool/crypto"
+	"event-pool/helper/common"
+	configHelper "event-pool/helper/config"
+	"event-pool/helper/keccak"
 	db2 "event-pool/internal/db"
 	"event-pool/network"
 	"event-pool/prisma/db"
 	"event-pool/secrets"
 	"event-pool/server/proto"
-	"github.com/ethereum/go-ethereum/core/txpool"
+	"event-pool/state"
+	itrie "event-pool/state/immutable-trie"
+	"event-pool/txpool"
+	proto2 "event-pool/txpool/proto"
+	"event-pool/types"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/balancer/grpclb/state"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Server is the central manager of the blockchain client
 type Server struct {
-	logger *zap.SugaredLogger
-	config *Config
+	logger       *zap.SugaredLogger
+	config       *Config
+	state        state.State
+	stateStorage itrie.Storage
 
-	//consensus consensus.Consensus
+	consensus consensus.Consensus
 
-	chain *chain.NodeChain
+	blockchain *blockchain.Blockchain
+	chain      *chain.NodeChain
 
 	// state executor
-	//executor *state.Executor
+	executor *state.Executor
 
 	// system grpc server
 	grpcServer *grpc.Server
 
 	// libp2p network
 	network *network.Server
+
+	// transaction pool
+	txpool *txpool.TxPool
 
 	serverMetrics *serverMetrics
 
@@ -60,10 +78,20 @@ var dirPaths = []string{
 
 // newCLILogger returns minimal logger instance that sends all logs to standard output
 func newCLILogger(config *Config) *zap.SugaredLogger {
-	if config.LogLevel == zap.DebugLevel {
-		return zap.NewExample().Sugar()
+	// Create a config suitable for CLI usage
+	zapConfig := zap.NewDevelopmentConfig()
+
+	// Apply the desired log level
+	zapConfig.Level = zap.NewAtomicLevelAt(config.LogLevel)
+
+	// Optionally change encoding to "console" for better CLI readability
+	zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	logger, err := zapConfig.Build()
+	if err != nil {
+		panic(err) // or handle gracefully
 	}
-	logger, _ := zap.NewDevelopment()
+
 	return logger.Sugar()
 }
 
@@ -97,10 +125,10 @@ func NewServer(config *Config) (*Server, error) {
 	m.logger.Infow("Data dir", "path", config.DataDir)
 	m.logger.Infow("Config", "config", config)
 
-	//// Generate all the paths in the dataDir
-	//if err := common.SetupDataDir(config.DataDir, dirPaths); err != nil {
-	//	return nil, fmt.Errorf("failed to create data directories: %w", err)
-	//}
+	// Generate all the paths in the dataDir
+	if err := common.SetupDataDir(config.DataDir, dirPaths); err != nil {
+		return nil, fmt.Errorf("failed to create data directories: %w", err)
+	}
 
 	if config.Telemetry.PrometheusAddr != nil {
 		m.serverMetrics = metricProvider("event-pool", config.Chain.Name, true)
@@ -134,6 +162,89 @@ func NewServer(config *Config) (*Server, error) {
 		m.network = networkSvr
 	}
 
+	// start blockchain object
+	stateStorage, err := itrie.NewLevelDBStorage(filepath.Join(m.config.DataDir, "trie"), logger)
+	if err != nil {
+		return nil, err
+	}
+
+	m.stateStorage = stateStorage
+
+	st := itrie.NewState(stateStorage)
+	m.state = st
+
+	m.executor = state.NewExecutor(config.Chain.Params, st, logger)
+
+	// use the eip155 signer
+	signer := crypto.NewEIP155Signer(uint64(m.config.Chain.Params.ChainID))
+
+	cfg := config.Chain.Clone()
+	cfg.NodeStorageAddress = types.StringToAddress(config.NodeStorageAddress)
+	cfg.RpcInfo = &chain.RpcInfo{}
+	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
+	cfg.Genesis.ChainId = uint64(m.config.Chain.Params.ChainID)
+	// blockchain object
+	m.blockchain, err = blockchain.NewBlockchain(logger, m.config.DataDir, cfg, nil, m.executor, signer)
+	if err != nil {
+		return nil, err
+	}
+
+	{
+		hub := &txpoolHub{
+			Blockchain: m.blockchain,
+			state:      m.state,
+		}
+
+		deploymentWhitelist, err := configHelper.GetDeploymentWhitelist(config.Chain)
+		if err != nil {
+			return nil, err
+		}
+
+		// start transaction pool
+		m.txpool, err = txpool.NewTxPool(
+			logger.Named("txpool"),
+			hub,
+			m.grpcServer,
+			m.network,
+			m.serverMetrics.txpool,
+			&txpool.Config{
+				MaxSlots:            m.config.MaxSlots,
+				PriceLimit:          m.config.PriceLimit,
+				MaxAccountEnqueued:  m.config.MaxAccountEnqueued,
+				DeploymentWhitelist: deploymentWhitelist,
+			},
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		m.txpool.SetSigner(signer)
+	}
+
+	m.executor.SetChainId(uint64(m.config.Chain.Params.ChainID))
+	m.executor.FnGetRpcClient = m.blockchain.GetEthereumClient
+	m.executor.FnGetMonitor = m.blockchain.GetMonitor
+
+	{
+		// Setup consensus
+		if err := m.setupConsensus(); err != nil {
+			return nil, err
+		}
+		m.blockchain.SetConsensus(m.consensus)
+	}
+
+	// after consensus is done, we can mine the genesis block in blockchain
+	// This is done because consensus might use a custom Hash function so we need
+	// to wait for consensus because we do any block hashing like genesis
+	if err := m.blockchain.ComputeGenesis(); err != nil {
+		return nil, err
+	}
+
+	// initialize data in consensus layer
+	if err := m.consensus.Initialize(); err != nil {
+		return nil, err
+	}
+
 	// setup and start grpc server
 	if err := m.setupHTTP(); err != nil {
 		return nil, err
@@ -147,7 +258,47 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, err
 	}
 
+	// start consensus
+	if err := m.consensus.Start(); err != nil {
+		return nil, err
+	}
+
+	m.txpool.Start()
+
 	return m, nil
+}
+
+// setupConsensus sets up the consensus mechanism
+func (s *Server) setupConsensus() error {
+	config := &consensus.Config{
+		Params: s.config.Chain.Params,
+		Logger: s.logger.Named("consensus"),
+		Config: map[string]any{"type": "PoS"},
+	}
+
+	consensus, err := ibft.Factory(
+		&consensus.Params{
+			Context:        context.Background(),
+			Config:         config,
+			Network:        s.network,
+			Blockchain:     s.blockchain,
+			Executor:       s.executor,
+			TxPool:         s.txpool,
+			Grpc:           s.grpcServer,
+			Logger:         s.logger,
+			Metrics:        s.serverMetrics.consensus,
+			SecretsManager: s.secretsManager,
+			BlockTime:      s.config.BlockTime,
+		},
+	)
+
+	if err != nil {
+		return err
+	}
+
+	s.consensus = consensus
+
+	return nil
 }
 
 // setupSecretsManager sets up the secrets manager
@@ -194,24 +345,13 @@ func (s *Server) setupSecretsManager() error {
 	return nil
 }
 
-type jsonRPCHub struct {
-	state state.State
-
-	*txpool.TxPool
-	*network.Server
-}
-
 // HELPER + WRAPPER METHODS //
-
-func (j *jsonRPCHub) GetPeers() int {
-	return len(j.Server.Peers())
-}
 
 // SETUP //
 
 // setupHTTP sets up the http server and listens on tcp
 func (s *Server) setupHTTP() error {
-	s.logger.Info("http server started", "addr", s.config.JSONRPC.JSONRPCAddr.String())
+	s.logger.Infow("http server started", "addr", s.config.JSONRPC.JSONRPCAddr.String())
 	lis, err := net.Listen("tcp", s.config.JSONRPC.JSONRPCAddr.String())
 	if err != nil {
 		return err
@@ -230,10 +370,18 @@ func (s *Server) setupHTTP() error {
 	if err != nil {
 		return err
 	}
+	if err = proto2.RegisterTxnPoolOperatorHandlerFromEndpoint(
+		context.Background(),
+		gwMux,
+		s.config.GRPCAddr.String(),
+		[]grpc.DialOption{grpc.WithTransportCredentials(insecure.NewCredentials())}); err != nil {
+		return err
+	}
 
 	// Optionally wrap with custom routes like /health
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", gwMux)
+	httpMux.HandleFunc("/ws", s.txpool.HandleWs)
 
 	srv := &http.Server{
 		Handler:           httpMux,
@@ -346,4 +494,48 @@ func loggerInterceptor(logger *zap.SugaredLogger) grpc.UnaryServerInterceptor {
 
 		return resp, err
 	}
+}
+
+type txpoolHub struct {
+	state state.State
+	*blockchain.Blockchain
+}
+
+func (t *txpoolHub) GetNonce(root types.Hash, addr types.Address) uint64 {
+	snap, err := t.state.NewSnapshotAt(root)
+	if err != nil {
+		return 0
+	}
+
+	result, ok := snap.Get(keccak.Keccak256(nil, addr.Bytes()))
+	if !ok {
+		return 0
+	}
+
+	var account state.Account
+
+	if err := account.UnmarshalRlp(result); err != nil {
+		return 0
+	}
+
+	return account.Nonce
+}
+
+func (t *txpoolHub) GetBalance(root types.Hash, addr types.Address) (*big.Int, error) {
+	snap, err := t.state.NewSnapshotAt(root)
+	if err != nil {
+		return nil, fmt.Errorf("unable to get snapshot for root, %w", err)
+	}
+
+	result, ok := snap.Get(keccak.Keccak256(nil, addr.Bytes()))
+	if !ok {
+		return big.NewInt(0), nil
+	}
+
+	var account state.Account
+	if err = account.UnmarshalRlp(result); err != nil {
+		return nil, fmt.Errorf("unable to unmarshal account from snapshot, %w", err)
+	}
+
+	return account.Balance, nil
 }

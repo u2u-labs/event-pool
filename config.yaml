@@ -42,13 +42,37 @@ consul:
 node_chain:
   name: "event_pool"
   params:
-    config:
-      chain_ids: [2484, 39]
-      whitelists:
-        deployment: ["0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1", "0x2743eEC46576f76f47334569074242F3D9a90B44"]
+    chain_id: 2484
+    block_time: 5
+    price_limit: 21000
+    epoch_size: 300
+    max_account_enqueued: 10000
+    max_slots: 10000
+    whitelists:
+      deployment: [
+        "0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1",
+        "0x2743eEC46576f76f47334569074242F3D9a90B44",
+        "0x01857E2BCFcb8B4eF76Df6590F8dCd3bf736C9E9",
+      ]
+    forks:
+      homestead: 0
+      byzantium: 0
+      constantinople: 0
+      petersburg: 0
+      istanbul: 0
+      EIP150: 0
+      EIP158: 0
+      EIP155: 0
   genesis:
+    timestamp: 0x0
+    number: 0x0
+    parentHash: 0x0000000000000000000000000000000000000000000000000000000000000000
+    stateRoot: 0x0000000000000000000000000000000000000000000000000000000000000000
   bootnodes:
-    - "/ip4/127.0.0.1/tcp/10006/p2p/16Uiu2HAkwTeJQzMwzSgLDnifn71B4c4DQaKbLSvGAAa9vMbSR2h6"
+    - "/ip4/127.0.0.1/tcp/10006/p2p/16Uiu2HAmHSuBQtm6M6ZCM19ePsTk4kk6hbYyif9esh3g2JhChA3R"
 grpc_addr: :10000
 jsonrpc_addr: :10002
+libp2p: :10006
 data_dir: ./data/temp
+node_storage_address: 0x8B0b7E0c9C5a6B48F5bA0352713B85c2C4973B78
+log_level: info
