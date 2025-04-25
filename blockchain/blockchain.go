@@ -118,14 +118,6 @@ func NewBlockchain(
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// use leveldb storage instead of sql
-	//if db, err = prismadb.NewSQLStorage(
-	//	logger,
-	//	dbClient,
-	//); err != nil {
-	//	return nil, err
-	//}
-
 	if dataDir == "" {
 		if db, err = memory.NewMemoryStorage(nil); err != nil {
 			return nil, err

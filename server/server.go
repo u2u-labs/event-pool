@@ -163,7 +163,6 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	// start blockchain object
-	//stateStorage, err := itrie.NewPrismaStorage(m.db, logger.Named("trie"))
 	stateStorage, err := itrie.NewLevelDBStorage(filepath.Join(m.config.DataDir, "trie"), logger)
 	if err != nil {
 		return nil, err

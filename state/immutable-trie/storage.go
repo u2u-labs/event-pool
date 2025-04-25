@@ -3,10 +3,13 @@ package itrie
 import (
 	"context"
 	"fmt"
+	"sync"
+	"time"
 
 	"event-pool/helper/hex"
 	"event-pool/prisma/db"
 	"event-pool/types"
+	"github.com/redis/go-redis/v9"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/umbracle/fastrlp"
 	"go.uber.org/zap"
@@ -266,107 +269,101 @@ type batchOperation struct {
 	value []byte
 }
 
-// NewPrismaStorage creates a storage implementation using PrismaClient
-func NewPrismaStorage(client *db.PrismaClient, logger *zap.SugaredLogger) (Storage, error) {
-	if client == nil {
-		return nil, fmt.Errorf("prisma client cannot be nil")
-	}
+// --------------------------------------------------------------------------
 
-	return &PrismaStorage{
-		client: client,
-		ctx:    context.Background(),
-	}, nil
+// RedisBatch is a batch write for Redis
+type RedisBatch struct {
+	client *redis.Client
+	pipe   redis.Pipeliner
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
-func (ps *PrismaStorage) Put(k, v []byte) {
-	key := hex.EncodeToHex(k)
-
-	// Use UpsertOne instead of checking existence + update/create
-	_, _ = ps.client.StorageKV.UpsertOne(
-		db.StorageKV.Key.Equals(key),
-	).Create(
-		db.StorageKV.Key.Set(key),
-		db.StorageKV.Value.Set(v),
-	).Update(
-		db.StorageKV.Value.Set(v),
-	).Exec(ps.ctx)
+func (b *RedisBatch) Put(k, v []byte) {
+	b.pipe.Set(b.ctx, string(k), v, 0)
 }
 
-func (ps *PrismaStorage) Get(k []byte) ([]byte, bool) {
-	key := hex.EncodeToHex(k)
-
-	result, err := ps.client.StorageKV.FindUnique(
-		db.StorageKV.Key.Equals(key),
-	).Exec(ps.ctx)
-
-	if err != nil || result == nil {
-		return nil, false
-	}
-
-	return result.Value, true
+func (b *RedisBatch) Write() {
+	defer b.cancel() // Properly cancel the context after executing the pipeline
+	_, _ = b.pipe.Exec(b.ctx)
 }
 
-func (ps *PrismaStorage) SetCode(hash types.Hash, code []byte) {
-	key := hash.String()
-
-	// Use UpsertOne instead of checking existence + update/create
-	_, _ = ps.client.CodeStorage.UpsertOne(
-		db.CodeStorage.Hash.Equals(key),
-	).Create(
-		db.CodeStorage.Hash.Set(key),
-		db.CodeStorage.Code.Set(code),
-	).Update(
-		db.CodeStorage.Code.Set(code),
-	).Exec(ps.ctx)
+// RedisStorage is a k/v storage using Redis
+type RedisStorage struct {
+	client *redis.Client
+	ctx    context.Context
+	logger *zap.SugaredLogger
+	mu     sync.Mutex // For thread safety
 }
 
-func (ps *PrismaStorage) GetCode(hash types.Hash) ([]byte, bool) {
-	key := hash.String()
-
-	result, err := ps.client.CodeStorage.FindUnique(
-		db.CodeStorage.Hash.Equals(key),
-	).Exec(ps.ctx)
-
-	if err != nil || result == nil {
-		return nil, false
-	}
-
-	return result.Code, true
+func (rs *RedisStorage) SetCode(hash types.Hash, code []byte) {
+	rs.Put(append(codePrefix, hash.Bytes()...), code)
 }
 
-func (ps *PrismaStorage) Batch() Batch {
-	return &PrismaBatch{
-		client: ps.client,
-		ctx:    ps.ctx,
-		ops:    make([]batchOperation, 0),
+func (rs *RedisStorage) GetCode(hash types.Hash) ([]byte, bool) {
+	return rs.Get(append(codePrefix, hash.Bytes()...))
+}
+
+func (rs *RedisStorage) Batch() Batch {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	return &RedisBatch{
+		client: rs.client,
+		pipe:   rs.client.Pipeline(),
+		ctx:    ctx,
+		cancel: cancel, // Store the cancel function to call in Write()
 	}
 }
 
-func (ps *PrismaStorage) Close() error {
-	err := ps.client.Disconnect()
-	return err
+func (rs *RedisStorage) Put(k, v []byte) {
+	ctx, cancel := context.WithTimeout(rs.ctx, 5*time.Second)
+	defer cancel()
+
+	_ = rs.client.Set(ctx, string(k), v, 0).Err()
 }
 
-func (pb *PrismaBatch) Put(k, v []byte) {
-	pb.ops = append(pb.ops, batchOperation{
-		key:   k,
-		value: v,
+func (rs *RedisStorage) Get(k []byte) ([]byte, bool) {
+	ctx, cancel := context.WithTimeout(rs.ctx, 5*time.Second)
+	defer cancel()
+
+	data, err := rs.client.Get(ctx, string(k)).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, false
+		} else {
+			rs.logger.Error("Error getting data from Redis", "error", err)
+			return nil, false
+		}
+	}
+
+	return data, true
+}
+
+func (rs *RedisStorage) Close() error {
+	return rs.client.Close()
+}
+
+func NewRedisStorage(addr string, password string, db int, logger *zap.SugaredLogger) (Storage, error) {
+	client := redis.NewClient(&redis.Options{
+		Addr:     addr,
+		Password: password,
+		DB:       db,
 	})
-}
 
-func (pb *PrismaBatch) Write() {
-	// Process batch operations using upsertOne
-	for _, op := range pb.ops {
-		key := hex.EncodeToHex(op.key)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-		// Use UpsertOne for batch operations
-		_, _ = pb.client.StorageKV.UpsertOne(
-			db.StorageKV.Key.Equals(key),
-		).Create(
-			db.StorageKV.Key.Set(key),
-			db.StorageKV.Value.Set(op.value),
-		).Update(
-			db.StorageKV.Value.Set(op.value),
-		).Exec(pb.ctx)
+	// Test connection
+	if _, err := client.Ping(ctx).Result(); err != nil {
+		return nil, err
 	}
+
+	// For operations context
+	opCtx := context.Background()
+
+	return &RedisStorage{
+		client: client,
+		ctx:    opCtx,
+		logger: logger,
+	}, nil
 }

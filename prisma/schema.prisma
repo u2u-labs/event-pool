@@ -51,30 +51,3 @@ model Subscription {
   @@unique([contractId, clientId])
   @@index([clientId])
 }
-
-model KeyValue {
-  key   String @id
-  value Bytes
-}
-
-// StorageKV represents the key-value storage for trie nodes
-model StorageKV {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     Bytes    // Using Bytes type for binary data
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([key])
-}
-
-// CodeStorage represents the storage for code by hash
-model CodeStorage {
-  id        String   @id @default(cuid())
-  hash      String   @unique // Hash of the code
-  code      Bytes    // The actual code bytes
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([hash])
-}
