@@ -30,6 +30,7 @@ type Genesis struct {
 	ParentHash types.Hash `json:"parentHash" yaml:"parentHash"`
 	ExtraData  []byte     `json:"extraData,omitempty" yaml:"extraData"`
 	ChainId    uint64     `json:"chainId" yaml:"chainId"`
+	SideHead   uint64     `json:"sideHead" yaml:"sideHead"`
 }
 
 // GenesisHeader converts the initially defined genesis struct to a header
@@ -47,6 +48,7 @@ func (g *Genesis) GenesisHeader() *types.Header {
 		StateRoot:  stateRoot,
 		ExtraData:  g.ExtraData,
 		ChainId:    g.ChainId,
+		SideHead:   g.SideHead,
 	}
 
 	return head

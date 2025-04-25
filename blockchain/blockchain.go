@@ -32,13 +32,14 @@ const (
 )
 
 var (
-	ErrNoBlock              = errors.New("no block data passed in")
-	ErrParentNotFound       = errors.New("parent block not found")
-	ErrInvalidParentHash    = errors.New("parent block hash is invalid")
-	ErrParentHashMismatch   = errors.New("invalid parent block hash")
-	ErrInvalidBlockSequence = errors.New("invalid block sequence")
-	ErrInvalidTxRoot        = errors.New("invalid block transactions root")
-	ErrInvalidStateRoot     = errors.New("invalid block state root")
+	ErrNoBlock                 = errors.New("no block data passed in")
+	ErrParentNotFound          = errors.New("parent block not found")
+	ErrInvalidParentHash       = errors.New("parent block hash is invalid")
+	ErrParentHashMismatch      = errors.New("invalid parent block hash")
+	ErrInvalidBlockSequence    = errors.New("invalid block sequence")
+	ErrInvalidTxRoot           = errors.New("invalid block transactions root")
+	ErrInvalidStateRoot        = errors.New("invalid block state root")
+	ErrInvalidSideHeadSequence = errors.New("invalid block side head sequence")
 )
 
 // Blockchain is a blockchain reference
@@ -331,6 +332,7 @@ func (b *Blockchain) verifyBlock(block *types.Block) error {
 // - The parent exists
 // - The hashes match up
 // - The block numbers match up
+// - The side head heights match up
 func (b *Blockchain) verifyBlockParent(childBlock *types.Block) error {
 	// Grab the parent block
 	parentHash := childBlock.ParentHash()
@@ -366,6 +368,15 @@ func (b *Blockchain) verifyBlockParent(childBlock *types.Block) error {
 		))
 
 		return ErrInvalidBlockSequence
+	}
+
+	// Make sure side head height is correct
+	if childBlock.Header.SideHead < parent.SideHead {
+		b.logger.Error(fmt.Sprintf(
+			"side head height not correct at %d and %d",
+			childBlock.Header.SideHead,
+			parent.SideHead,
+		))
 	}
 
 	return nil

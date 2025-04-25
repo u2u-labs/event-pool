@@ -7,6 +7,7 @@ import (
 
 	"event-pool/consensus"
 	"event-pool/consensus/ibft/signer"
+	"event-pool/helper/common"
 	"event-pool/helper/hex"
 	"event-pool/ibft/messages"
 	"event-pool/state"
@@ -193,6 +194,16 @@ func (i *backendIBFT) NewHeader(parent *types.Header) (*types.Header, error) {
 		ParentHash: parent.Hash,
 		Number:     parent.Number + 1,
 		ChainId:    parent.ChainId,
+		SideHead:   parent.SideHead,
+	}
+
+	// get side head
+	if header.Number%common.SideHeadSyncInterval == 0 || header.Number <= 1 {
+		sideHead, err := i.blockchain.GetEthereumClient().GetLatestBlock()
+		if err != nil {
+			return nil, err
+		}
+		header.SideHead = sideHead
 	}
 
 	return header, nil

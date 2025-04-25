@@ -22,6 +22,10 @@ var (
 	MaxSafeJSInt = uint64(math.Pow(2, 53) - 2)
 )
 
+const (
+	SideHeadSyncInterval = 100
+)
+
 // Min returns the strictly lower number
 func Min(a, b uint64) uint64 {
 	if a < b {

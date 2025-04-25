@@ -62,6 +62,7 @@ func (h *Header) MarshalRLPWith(arena *fastrlp.Arena) *fastrlp.Value {
 	vv.Set(arena.NewUint(h.Number))
 	vv.Set(arena.NewUint(h.Timestamp))
 	vv.Set(arena.NewBytes(h.ExtraData))
+	vv.Set(arena.NewUint(h.SideHead))
 
 	return vv
 }
