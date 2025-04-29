@@ -2,8 +2,13 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
+	ws2 "event-pool/helper/ws"
+	"event-pool/network/common"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"net"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -177,4 +182,128 @@ func (s *Server) GetEvents(ctx context.Context, req *pb.GetEventsRequest) (*pb.G
 	}
 
 	return response, nil
+}
+
+// wsUpgrader defines upgrade parameters for the WS connection
+var wsUpgrader = websocket.Upgrader{
+	// Uses the default HTTP buffer sizes for Read / Write buffers.
+	// Documentation specifies that they are 4096B in size.
+	// There is no need to have them be 4x in size when requests / responses
+	// shouldn't exceed 1024B
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
+	// CORS rule - Allow requests from anywhere
+	wsUpgrader.CheckOrigin = func(r *http.Request) bool { return true }
+
+	// Upgrade the connection to a WS one
+	ws, err := wsUpgrader.Upgrade(w, req, nil)
+	if err != nil {
+		fmt.Println(fmt.Sprintf("Unable to upgrade to a WS connection, %s", err.Error()))
+
+		return
+	}
+
+	chainId := req.URL.Query().Get("chain_id")
+	contractAddr := req.URL.Query().Get("contract_address")
+	eventSignature := req.URL.Query().Get("event_signature")
+	token := req.URL.Query().Get("token")
+	key := fmt.Sprintf("%s/%s/%s", chainId, contractAddr, eventSignature)
+
+	// check if the token is valid
+	if err = s.validateToken(token); err != nil {
+		fmt.Println(fmt.Sprintf("Invalid token, %s", err.Error()))
+		return
+	}
+
+	// Create a channel for this subscriber
+	eventChan := make(chan *pb.Event, 100)
+
+	// Register the subscriber
+	s.mu.Lock()
+	s.subscribers[key] = append(s.subscribers[key], eventChan)
+	s.mu.Unlock()
+
+	// Cleanup when the stream ends
+	defer func() {
+		s.mu.Lock()
+		subs := s.subscribers[key]
+		for i, ch := range subs {
+			if ch == eventChan {
+				subs = append(subs[:i], subs[i+1:]...)
+				break
+			}
+		}
+		s.subscribers[key] = subs
+		s.mu.Unlock()
+		close(eventChan)
+	}()
+
+	cancel := func() {
+	}
+
+	// Defer WS closure
+	defer func(ws *websocket.Conn) {
+		cancel()
+		err = ws.Close()
+		if err != nil {
+			fmt.Println(
+				fmt.Sprintf("Unable to gracefully close WS connection, %s", err.Error()),
+			)
+		}
+	}(ws)
+
+	wrapConn := &ws2.WsWrapper{Ws: ws, Logger: common.NewNullSugaredLogger()}
+
+	fmt.Println("Websocket connection established")
+	// Run the listen loop
+
+	for {
+		// Read the incoming message
+		msgType, _, err := ws.ReadMessage()
+		if err != nil {
+			if websocket.IsCloseError(err,
+				websocket.CloseGoingAway,
+				websocket.CloseNormalClosure,
+				websocket.CloseAbnormalClosure,
+			) {
+				// Accepted close codes
+				fmt.Println("Closing WS connection gracefully")
+			} else {
+				fmt.Println(fmt.Sprintf("Unable to read WS message, %s", err.Error()))
+				fmt.Println("Closing WS connection with error")
+			}
+
+			break
+		}
+
+		select {
+		case event := <-eventChan:
+			data := map[string]any{
+				"data":         event.Data,
+				"tx_hash":      event.TxHash,
+				"block_number": event.BlockNumber,
+			}
+
+			resp, err := json.Marshal(data)
+			if err != nil {
+				fmt.Println(fmt.Sprintf("Unable to marshal WS message, %s", err.Error()))
+				return
+			}
+			if sendErr := wrapConn.WriteMessage(msgType, resp); sendErr != nil {
+				return
+			}
+		}
+	}
+}
+
+// TODO: define the token validation logic
+func (s *Server) validateToken(token string) error {
+	if token == "" {
+		return fmt.Errorf("token is required")
+	}
+
+	return nil
 }

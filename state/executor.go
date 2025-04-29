@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 
 	"event-pool/chain"
@@ -15,14 +16,15 @@ import (
 )
 
 type Executor struct {
-	logger   *zap.SugaredLogger
-	config   *chain.Params
-	state    State
-	txnCache *lru.Cache // used for re-using pre-transformed txn outside the building block scope
-	ssCache  *lru.Cache // transition snapshot id cache. Necessary in order to handle block already inserted
-	chainId  uint64
+	logger      *zap.SugaredLogger
+	config      *chain.Params
+	state       State
+	txnCache    *lru.Cache // used for re-using pre-transformed txn outside the building block scope
+	ssCache     *lru.Cache // transition snapshot id cache. Necessary in order to handle block already inserted
+	filterCache *lru.Cache // used to cache filter logs params. So we don't have to re-execute the same filter
+	chainId     uint64
 
-	FnGetRpcClient func() *ethereum.Client
+	FnGetRpcClient func(int) *ethereum.Client
 	FnGetMonitor   func() *monitor.Monitor
 }
 
@@ -36,13 +38,18 @@ func NewExecutor(config *chain.Params, s State, logger *zap.SugaredLogger) *Exec
 	if err != nil {
 		logger.Error("failed to init cache", "err", err)
 	}
+	filterCache, err := lru.New(10)
+	if err != nil {
+		logger.Error("failed to init cache", "err", err)
+	}
 
 	return &Executor{
-		logger:   logger,
-		config:   config,
-		state:    s,
-		txnCache: txnCache,
-		ssCache:  ssCache,
+		logger:      logger,
+		config:      config,
+		state:       s,
+		txnCache:    txnCache,
+		ssCache:     ssCache,
+		filterCache: filterCache,
 	}
 }
 
@@ -118,7 +125,7 @@ type Transition struct {
 	ctx     context.Context
 	gasPool uint64
 
-	FnGetEtherClient func() *ethereum.Client
+	FnGetEtherClient func(int) *ethereum.Client
 	chainId          uint64
 	FnGetMonitor     func() *monitor.Monitor
 
@@ -207,23 +214,32 @@ func (t *Transition) apply(msg *types.Transaction) (any, error) {
 		t.logger.Errorw("failed to unmarshal logs params", "err", err)
 		return nil, err
 	}
-	client := t.FnGetEtherClient()
 
-	// Get logs for the block range
-	logs, err := client.FilterLogs(
-		t.ctx,
-		params.ContractAddress,
-		params.EventSignature,
-		params.FromBlock,
-		params.ToBlock,
-		int(t.chainId),
-	)
-	if err != nil {
-		t.logger.Errorw("failed to get logs", "err", err)
-		return nil, err
+	client := t.FnGetEtherClient(params.ChainId)
+	if client == nil {
+		return nil, fmt.Errorf("no Ethereum client for chain id %d", params.ChainId)
 	}
 
-	t.FnGetMonitor().ProcessLogsEvent(t.ctx, logs, client, params.EventSignature.String(), int64(t.chainId), params.ContractAddress.String())
+	// to skip if already processed this query
+	if !t.r.filterCache.Contains(params.ComputeHash()) {
+		// Get logs for the block range
+		logs, err := client.FilterLogs(
+			t.ctx,
+			params.ContractAddress,
+			params.EventSignature,
+			params.FromBlock,
+			params.ToBlock,
+			int(t.chainId),
+		)
+		if err != nil {
+			t.logger.Errorw("failed to get logs", "err", err)
+			return nil, err
+		}
+
+		t.FnGetMonitor().ProcessLogsEvent(t.ctx, logs, client, params.EventSignature.String(), int64(t.chainId), params.ContractAddress.String())
+		t.r.filterCache.Add(params.ComputeHash(), logs)
+	}
+
 	// just increase the nonce to change state
 	t.state.IncrNonce(msg.From)
 

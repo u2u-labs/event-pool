@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"event-pool/pkg/ethereum"
 	"fmt"
 	"math/big"
 	"net"
@@ -178,13 +179,22 @@ func NewServer(config *Config) (*Server, error) {
 	// use the eip155 signer
 	signer := crypto.NewEIP155Signer(uint64(m.config.Chain.Params.ChainID))
 
+	ethClients := make(map[int]*ethereum.Client)
+	for chainID, chainConfig := range config.EthereumRpc.Chains {
+		client, err := ethereum.NewClient(chainConfig.RpcUrl, chainID, int(chainConfig.BlockTime), dbClient)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", chainID, err)
+		}
+		ethClients[chainID] = client
+	}
+
 	cfg := config.Chain.Clone()
 	cfg.NodeStorageAddress = types.StringToAddress(config.NodeStorageAddress)
 	cfg.RpcInfo = &chain.RpcInfo{}
 	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
 	cfg.Genesis.ChainId = uint64(m.config.Chain.Params.ChainID)
 	// blockchain object
-	m.blockchain, err = blockchain.NewBlockchain(logger, m.config.DataDir, cfg, nil, m.executor, signer)
+	m.blockchain, err = blockchain.NewBlockchain(logger, m.config.DataDir, cfg, nil, m.executor, signer, ethClients)
 	if err != nil {
 		return nil, err
 	}

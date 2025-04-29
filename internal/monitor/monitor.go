@@ -297,6 +297,7 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 							ToBlock:         big.NewInt(int64(toBlock)),
 							ContractAddress: ethereum.HexToAddress(address),
 							EventSignature:  ethereum.HexToHash(eventSignature),
+							ChainId:         int(chainID),
 						})
 						if err != nil {
 							fmt.Printf("ERROR: Failed to send transaction: %v\n", err)
@@ -521,11 +522,13 @@ func (m *Monitor) checkForNewContracts(ctx context.Context) {
 }
 
 func (m *Monitor) SendTx(ctx context.Context, filter types.FilterLogsParams) error {
+	filter.ComputeHash()
 	input, err := json.Marshal(filter)
 	if err != nil {
 		return err
 	}
 
+	// placeholder to address
 	addr := types.StringToAddress("0x01857E2BCFcb8B4eF76Df6590F8dCd3bf736C9E9")
 	tx := &types.Transaction{
 		Nonce:    0,

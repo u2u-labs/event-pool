@@ -59,6 +59,7 @@ type Blockchain struct {
 	stream *eventStream // Event subscriptions
 
 	rpcClient          *ethereum.Client
+	ethClients         map[int]*ethereum.Client
 	nodeStorageAddress types.Address
 	monitor            *monitor.Monitor
 
@@ -97,6 +98,7 @@ func NewBlockchain(
 	consensus Verifier,
 	executor Executor,
 	txSigner TxSigner,
+	ethClients map[int]*ethereum.Client,
 ) (*Blockchain, error) {
 	b := &Blockchain{
 		logger:    logger.Named("blockchain"),
@@ -140,8 +142,6 @@ func NewBlockchain(
 	}
 	b.rpcClient = client
 	b.nodeStorageAddress = config.NodeStorageAddress
-	ethClients := make(map[int]*ethereum.Client)
-	ethClients[b.config.Params.ChainID] = client
 	mon := monitor.NewMonitor(ethClients, dbClient, nil)
 	b.monitor = mon
 
@@ -729,8 +729,8 @@ func (b *Blockchain) GetRpcClient() bind.ContractBackend {
 	return b.rpcClient.GetClient()
 }
 
-func (b *Blockchain) GetEthereumClient() *ethereum.Client {
-	return b.rpcClient
+func (b *Blockchain) GetEthereumClient(chainId int) *ethereum.Client {
+	return b.ethClients[chainId]
 }
 
 func (b *Blockchain) GetMonitor() *monitor.Monitor {

@@ -3,16 +3,14 @@ package txpool
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
-	"sync"
-
 	"event-pool/helper/hex"
+	ws2 "event-pool/helper/ws"
 	"event-pool/txpool/proto"
 	"event-pool/types"
+	"fmt"
 	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
 	empty "google.golang.org/protobuf/types/known/emptypb"
+	"net/http"
 )
 
 // Status implements the GRPC status endpoint. Returns the number of transactions in the pool
@@ -128,7 +126,7 @@ func (p *TxPool) HandleWs(w http.ResponseWriter, req *http.Request) {
 		}
 	}(ws)
 
-	wrapConn := &wsWrapper{ws: ws, logger: p.logger}
+	wrapConn := &ws2.WsWrapper{Ws: ws, Logger: p.logger}
 
 	p.logger.Info("Websocket connection established")
 	// Run the listen loop
@@ -173,38 +171,6 @@ func (p *TxPool) HandleWs(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-}
-
-// wsWrapper is a wrapping object for the web socket connection and logger
-type wsWrapper struct {
-	sync.Mutex
-
-	ws       *websocket.Conn    // the actual WS connection
-	logger   *zap.SugaredLogger // module logger
-	filterID string             // filter ID
-}
-
-func (w *wsWrapper) SetFilterID(filterID string) {
-	w.filterID = filterID
-}
-
-func (w *wsWrapper) GetFilterID() string {
-	return w.filterID
-}
-
-// WriteMessage writes out the message to the WS peer
-func (w *wsWrapper) WriteMessage(messageType int, data []byte) error {
-	w.Lock()
-	defer w.Unlock()
-	writeErr := w.ws.WriteMessage(messageType, data)
-
-	if writeErr != nil {
-		w.logger.Error(
-			fmt.Sprintf("Unable to write WS message, %s", writeErr.Error()),
-		)
-	}
-
-	return writeErr
 }
 
 // isSupportedWSType returns a status indicating if the message type is supported
