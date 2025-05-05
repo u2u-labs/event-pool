@@ -3,17 +3,16 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
-
 	"event-pool/internal/config"
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
 )
 
 type Server struct {
@@ -169,6 +168,10 @@ func (s *Server) Start() error {
 			"topic":  fmt.Sprintf("events/%d/%s/%s", req.ChainID, req.ContractAddr, req.EventSignature),
 		})
 	})
+
+	http.HandleFunc("/api/v1/token", s.grpcServer.RequestToken)
+	http.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
+	http.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
 
 	// Start the server
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)

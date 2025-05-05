@@ -44,7 +44,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize gRPC server
-	grpcServer := grpc.NewServer(dbClient)
+	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey)
 
 	// Initialize monitor
 	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer)

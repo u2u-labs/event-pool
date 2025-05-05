@@ -9,13 +9,14 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	Ethereum EthereumConfig `mapstructure:"ethereum"`
-	MQTT     MQTTConfig     `mapstructure:"mqtt"`
-	Asynq    AsynqConfig    `mapstructure:"asynq"`
-	Node     NodeConfig     `mapstructure:"node"`
+	Server    ServerConfig   `mapstructure:"server"`
+	Database  DatabaseConfig `mapstructure:"database"`
+	Redis     RedisConfig    `mapstructure:"redis"`
+	Ethereum  EthereumConfig `mapstructure:"ethereum"`
+	MQTT      MQTTConfig     `mapstructure:"mqtt"`
+	Asynq     AsynqConfig    `mapstructure:"asynq"`
+	Node      NodeConfig     `mapstructure:"node"`
+	SecretKey string
 }
 
 type ServerConfig struct {
@@ -81,6 +82,7 @@ func Load() (*Config, error) {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
+	cfg.SecretKey = viper.GetString("SECRET_KEY")
 
 	return cfg, nil
 }
