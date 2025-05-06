@@ -175,3 +175,7 @@ func (c *Client) GetDecoder() *EventDecoder {
 func (c *Client) GetClient() *ethclient.Client {
 	return c.client
 }
+
+func (c *Client) GetChainId() int {
+	return c.chainID
+}

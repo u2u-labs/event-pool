@@ -7,22 +7,28 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	"event-pool/contracts/sessionreceipt"
+	crypto2 "event-pool/crypto"
 	ws2 "event-pool/helper/ws"
 	pb "event-pool/internal/proto"
 	"event-pool/network/common"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	common2 "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
 	"google.golang.org/grpc"
@@ -271,7 +277,7 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 	contractAddress := req.URL.Query().Get("contract_address")
 	eventName := req.URL.Query().Get("event_name")
 	token := req.URL.Query().Get("token")
-	_, err = s.ValidateJWT(token)
+	claims, err := s.ValidateJWT(token)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
@@ -310,7 +316,9 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 		s.subscribers[key] = subs
-		delete(s.activeConns, token)
+		if conn, exists := s.activeConns[token]; exists && conn.conn == ws {
+			delete(s.activeConns, token)
+		}
 		s.mu.Unlock()
 		close(eventChan)
 		cancel()
@@ -336,10 +344,15 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 
 	s.logger.Infoln("Websocket connection established")
 	// Run the listen loop
+	expiry, err := claims.GetExpirationTime()
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Unable to get expiration time, %s", err.Error()))
+		return
+	}
+	timer := time.NewTimer(time.Until(expiry.Time))
 
 	// Send the token to the client
-	wrapConn.WriteMessage(websocket.TextMessage, []byte("Returning streaming token:"))
-	wrapConn.WriteMessage(websocket.TextMessage, Data(token))
+	wrapConn.WriteMessage(websocket.TextMessage, []byte("Connected"))
 
 	// Run a separate goroutine to listen for context cancellation
 	go func() {
@@ -351,6 +364,10 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 	for {
 		// Check if context is done (disconnection requested)
 		select {
+		case <-timer.C:
+			s.logger.Infoln("Connection expired")
+			go s.submitSessionReceipt(claims)
+			return
 		case <-ctx.Done():
 			s.logger.Infoln("Connection terminated by server")
 			return
@@ -446,40 +463,89 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 
 	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
 
-	go func() {
-		// submit receipt data
-		now := time.Now().Unix()
-		iss, err := claims.GetIssuedAt()
-		if err != nil {
-			s.logger.Infoln(fmt.Sprintf("Error getting issuer: %s", err.Error()))
-			return
-		}
-		sessionReceipt, err := sessionreceipt.NewSessionReceipt(common2.HexToAddress(s.sessionContract), s.client.GetClient())
-		if err != nil {
-			s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
-			return
-		}
+	go s.submitSessionReceipt(claims)
+}
 
-		nonce, err := sessionReceipt.GetNonce(nil, common2.HexToAddress(claims.Address))
-		if err != nil {
-			s.logger.Infoln(fmt.Sprintf("Error getting nonce: %s", err.Error()))
-			return
-		}
+// submitSessionReceipt handles submitting the session receipt data to the blockchain
+func (s *Server) submitSessionReceipt(claims *JwtClaims) {
+	// submit receipt data
+	now := time.Now().Unix()
+	iss, err := claims.GetIssuedAt()
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error getting issuer: %s", err.Error()))
+		return
+	}
 
-		tx, err := sessionReceipt.CreateSessionReceipt(
-			nil,
-			common2.HexToAddress(claims.Address),
-			big.NewInt(now-iss.Unix()),
-			common2.HexToAddress("0x0000000000000000000000000000000000000000"),
-			0,
-			nonce,
-		)
-		if err != nil {
-			s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
-			return
-		}
-		s.logger.Infof("session receipt tx: %s\n", tx.Hash().Hex())
-	}()
+	// Load private key for signing
+	secretBytes, err := os.ReadFile(filepath.Join(viper.GetString("data_dir"), "consensus/validator.key"))
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error reading validator key: %s", err.Error()))
+		return
+	}
+	privateKey, err := crypto2.BytesToECDSAPrivateKey(secretBytes)
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error converting validator key to ECDSA: %s", err.Error()))
+		return
+	}
+
+	// Create a new transactor with the private key
+	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(int64(s.client.GetChainId())))
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error creating transactor: %s", err.Error()))
+		return
+	}
+
+	// Get current gas price
+	gasPrice, err := s.client.GetClient().SuggestGasPrice(context.Background())
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error getting gas price: %s", err.Error()))
+		return
+	}
+
+	// Set transaction parameters
+	auth.GasPrice = gasPrice
+	auth.GasLimit = uint64(3000000) // Set appropriate gas limit
+
+	sessionReceipt, err := sessionreceipt.NewSessionReceipt(common2.HexToAddress(s.sessionContract), s.client.GetClient())
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
+		return
+	}
+
+	nonce, err := sessionReceipt.GetNonce(nil, common2.HexToAddress(claims.Address))
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error getting nonce: %s", err.Error()))
+		return
+	}
+
+	// Call CreateSessionReceipt with the auth object to sign and send the transaction
+	tx, err := sessionReceipt.CreateSessionReceipt(
+		auth,
+		common2.HexToAddress(claims.Address),
+		big.NewInt(now-iss.Unix()),
+		common2.HexToAddress("0x0000000000000000000000000000000000000000"),
+		0,
+		nonce,
+	)
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
+		return
+	}
+
+	s.logger.Infof("Session receipt transaction sent: %s\n", tx.Hash().Hex())
+
+	// Wait for the transaction to be mined
+	receipt, err := bind.WaitMined(context.Background(), s.client.GetClient(), tx)
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error waiting for transaction to be mined: %s", err.Error()))
+		return
+	}
+
+	if receipt.Status == types.ReceiptStatusSuccessful {
+		s.logger.Infof("Session receipt transaction successful, block: %d\n", receipt.BlockNumber)
+	} else {
+		s.logger.Infoln("Session receipt transaction failed")
+	}
 }
 
 type JwtClaims struct {
