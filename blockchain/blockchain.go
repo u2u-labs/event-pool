@@ -142,7 +142,7 @@ func NewBlockchain(
 	}
 	b.rpcClient = client
 	b.nodeStorageAddress = config.NodeStorageAddress
-	mon := monitor.NewMonitor(ethClients, dbClient, nil)
+	mon := monitor.NewMonitor(ethClients, dbClient, nil, logger.Named("monitor"))
 	b.monitor = mon
 
 	if err := b.initCaches(defaultCacheSize); err != nil {

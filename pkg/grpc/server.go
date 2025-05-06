@@ -3,23 +3,27 @@ package grpc
 import (
 	"context"
 	"encoding/json"
-	ws2 "event-pool/helper/ws"
-	"event-pool/network/common"
 	"fmt"
-	"github.com/ethereum/go-ethereum/accounts"
-	common2 "github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/golang-jwt/jwt/v5"
-	"github.com/gorilla/websocket"
+	"math/big"
 	"net"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
 
+	"event-pool/contracts/sessionreceipt"
+	ws2 "event-pool/helper/ws"
 	pb "event-pool/internal/proto"
+	"event-pool/network/common"
+	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
+	"github.com/ethereum/go-ethereum/accounts"
+	common2 "github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
 
 	"google.golang.org/grpc"
 )
@@ -28,27 +32,34 @@ const LOGIN_MESSAGE = "logmein"
 
 type Server struct {
 	pb.UnimplementedEventServiceServer
-	mu          sync.RWMutex
-	subscribers map[string][]chan *pb.Event
-	activeConns map[string]*activeConnection // Added to track active connections
-	grpcServer  *grpc.Server
-	db          *db.PrismaClient
-	secretKey   []byte
+	mu              sync.RWMutex
+	subscribers     map[string][]chan *pb.Event
+	activeConns     map[string]*activeConnection // Added to track active connections
+	grpcServer      *grpc.Server
+	db              *db.PrismaClient
+	secretKey       []byte
+	sessionContract string
+	client          *ethereum.Client
+	logger          *zap.SugaredLogger
 }
 
 // activeConnection tracks both the channel and the websocket connection
 type activeConnection struct {
 	conn   *websocket.Conn
 	cancel context.CancelFunc
+	logger *zap.SugaredLogger
 }
 
-func NewServer(db *db.PrismaClient, secretKey string) *Server {
+func NewServer(db *db.PrismaClient, secretKey string, sessionContract string, client *ethereum.Client, logger *zap.SugaredLogger) *Server {
 	return &Server{
-		subscribers: make(map[string][]chan *pb.Event),
-		grpcServer:  grpc.NewServer(),
-		activeConns: make(map[string]*activeConnection),
-		db:          db,
-		secretKey:   []byte(secretKey),
+		subscribers:     make(map[string][]chan *pb.Event),
+		grpcServer:      grpc.NewServer(),
+		activeConns:     make(map[string]*activeConnection),
+		db:              db,
+		secretKey:       []byte(secretKey),
+		sessionContract: sessionContract,
+		client:          client,
+		logger:          logger,
 	}
 }
 
@@ -206,38 +217,24 @@ func (s *Server) RequestToken(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	secret := r.Header.Get("X-Secret")
+	if s.secretKey != nil && secret != string(s.secretKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var body struct {
-		Address         string `json:"address"`
-		Signature       string `json:"signature"`
-		ChainId         string `json:"chain_id"`
-		Timestamp       int64  `json:"timestamp"`
-		ContractAddress string `json:"contract_address"`
-		EventSignature  string `json:"event_signature"`
+		Address  string `json:"address"`
+		Duration int64  `json:"duration"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	const allowedSkew = 5 * time.Minute
 
-	timestampTime := time.Unix(body.Timestamp, 0)
-	now := time.Now()
-
-	if now.Sub(timestampTime) > allowedSkew || timestampTime.After(now.Add(allowedSkew)) {
-		http.Error(w, "Invalid or expired timestamp", http.StatusUnauthorized)
-		return
-	}
-	if !VerifySignature(body.Address, fmt.Sprintf("%s_%d", LOGIN_MESSAGE, body.Timestamp), body.Signature) {
-		fmt.Println(fmt.Sprintf("Invalid signature"))
-		http.Error(w, "Invalid signature", http.StatusUnauthorized)
-		return
-	}
-
-	key := fmt.Sprintf("%s/%s/%s", body.ChainId, body.ContractAddress, body.EventSignature)
-	token, err := s.GenerateJWT(body.Address, body.ChainId, body.ContractAddress, body.EventSignature, key, 30*24*60) // 30 days
+	token, err := s.GenerateJWT(body.Address, body.Duration)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Unable to generate JWT, %s", err.Error()))
+		s.logger.Infoln(fmt.Sprintf("Unable to generate JWT, %s", err.Error()))
 		http.Error(w, "Unable to generate JWT", http.StatusInternalServerError)
 		return
 	}
@@ -265,18 +262,21 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 	// Upgrade the connection to a WS one
 	ws, err := wsUpgrader.Upgrade(w, req, nil)
 	if err != nil {
-		fmt.Println(fmt.Sprintf("Unable to upgrade to a WS connection, %s", err.Error()))
+		s.logger.Infoln(fmt.Sprintf("Unable to upgrade to a WS connection, %s", err.Error()))
 
 		return
 	}
 
+	chainId := req.URL.Query().Get("chain_id")
+	contractAddress := req.URL.Query().Get("contract_address")
+	eventName := req.URL.Query().Get("event_name")
 	token := req.URL.Query().Get("token")
-	claims, err := s.ValidateJWT(token)
+	_, err = s.ValidateJWT(token)
 	if err != nil {
 		http.Error(w, "Invalid token", http.StatusUnauthorized)
 		return
 	}
-	key := claims.Key
+	key := fmt.Sprintf("%s/%s/%s", chainId, contractAddress, eventName)
 
 	// Create a context with cancel for this connection
 	ctx, cancel := context.WithCancel(context.Background())
@@ -286,10 +286,16 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 
 	// Register the subscriber
 	s.mu.Lock()
+	oldConn, exist := s.activeConns[token]
+	if exist {
+		oldConn.Close()
+	}
+
 	s.subscribers[key] = append(s.subscribers[key], eventChan)
 	s.activeConns[token] = &activeConnection{
 		conn:   ws,
 		cancel: cancel,
+		logger: s.logger.Named("ws"),
 	}
 	s.mu.Unlock()
 
@@ -315,12 +321,12 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 		err = ws.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""))
 		if err != nil {
-			fmt.Println(fmt.Sprintf("Error sending close message: %s", err.Error()))
+			s.logger.Infoln(fmt.Sprintf("Error sending close message: %s", err.Error()))
 		}
 
 		err = ws.Close()
 		if err != nil {
-			fmt.Println(
+			s.logger.Infoln(
 				fmt.Sprintf("Unable to gracefully close WS connection, %s", err.Error()),
 			)
 		}
@@ -328,7 +334,7 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 
 	wrapConn := &ws2.WsWrapper{Ws: ws, Logger: common.NewNullSugaredLogger()}
 
-	fmt.Println("Websocket connection established")
+	s.logger.Infoln("Websocket connection established")
 	// Run the listen loop
 
 	// Send the token to the client
@@ -346,7 +352,7 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 		// Check if context is done (disconnection requested)
 		select {
 		case <-ctx.Done():
-			fmt.Println("Connection terminated by server")
+			s.logger.Infoln("Connection terminated by server")
 			return
 		default:
 			// Continue normal operation
@@ -361,10 +367,10 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 				websocket.CloseAbnormalClosure,
 			) {
 				// Accepted close codes
-				fmt.Println("Closing WS connection gracefully")
+				s.logger.Infoln("Closing WS connection gracefully")
 			} else {
-				fmt.Println(fmt.Sprintf("Unable to read WS message, %s", err.Error()))
-				fmt.Println("Closing WS connection with error")
+				s.logger.Infoln(fmt.Sprintf("Unable to read WS message, %s", err.Error()))
+				s.logger.Infoln("Closing WS connection with error")
 			}
 
 			break
@@ -379,7 +385,7 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 			}
 
 			if sendErr := wrapConn.WriteMessage(msgType, Data(data)); sendErr != nil {
-				fmt.Println(fmt.Sprintf("Unable to write WS message, %s", err.Error()))
+				s.logger.Infoln(fmt.Sprintf("Unable to write WS message, %s", err.Error()))
 				return
 			}
 		case <-time.After(100 * time.Millisecond):
@@ -426,40 +432,67 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 	// Send close frame to client
 	closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by server")
 	if err := activeConn.conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
-		fmt.Println(fmt.Sprintf("Error sending close message: %s", err.Error()))
+		s.logger.Infoln(fmt.Sprintf("Error sending close message: %s", err.Error()))
 	}
 
 	// Close the connection
 	if err := activeConn.conn.Close(); err != nil {
-		fmt.Println(fmt.Sprintf("Error closing connection: %s", err.Error()))
+		s.logger.Infoln(fmt.Sprintf("Error closing connection: %s", err.Error()))
 	}
+	delete(s.activeConns, token)
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"disconnected"}`))
 
-	fmt.Printf("Disconnected client with address %s for key %s\n", claims.Address, claims.Key)
+	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
 
+	go func() {
+		// submit receipt data
+		now := time.Now().Unix()
+		iss, err := claims.GetIssuedAt()
+		if err != nil {
+			s.logger.Infoln(fmt.Sprintf("Error getting issuer: %s", err.Error()))
+			return
+		}
+		sessionReceipt, err := sessionreceipt.NewSessionReceipt(common2.HexToAddress(s.sessionContract), s.client.GetClient())
+		if err != nil {
+			s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
+			return
+		}
+
+		nonce, err := sessionReceipt.GetNonce(nil, common2.HexToAddress(claims.Address))
+		if err != nil {
+			s.logger.Infoln(fmt.Sprintf("Error getting nonce: %s", err.Error()))
+			return
+		}
+
+		tx, err := sessionReceipt.CreateSessionReceipt(
+			nil,
+			common2.HexToAddress(claims.Address),
+			big.NewInt(now-iss.Unix()),
+			common2.HexToAddress("0x0000000000000000000000000000000000000000"),
+			0,
+			nonce,
+		)
+		if err != nil {
+			s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
+			return
+		}
+		s.logger.Infof("session receipt tx: %s\n", tx.Hash().Hex())
+	}()
 }
 
 type JwtClaims struct {
-	Address         string `json:"address"`
-	ChainId         string `json:"chain_id"`
-	ContractAddress string `json:"contract_address"`
-	EventSignature  string `json:"event_signature"`
-	Key             string `json:"key"`
+	Address string `json:"address"`
 	jwt.RegisteredClaims
 }
 
 // GenerateJWT creates a signed JWT token
-func (s *Server) GenerateJWT(address, chainId, contractAddress, eventSignature, key string, expirationMinutes int) (string, error) {
+func (s *Server) GenerateJWT(address string, expiry int64) (string, error) {
 	claims := JwtClaims{
-		Address:         address,
-		Key:             key,
-		ChainId:         chainId,
-		ContractAddress: contractAddress,
-		EventSignature:  eventSignature,
+		Address: address,
 		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expirationMinutes) * time.Minute)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
 	}
@@ -488,7 +521,6 @@ func (s *Server) ValidateJWT(tokenStr string) (*JwtClaims, error) {
 func VerifySignature(fromAddress, message, signatureHex string) bool {
 	signature, err := hexutil.Decode(signatureHex)
 	if err != nil {
-		fmt.Println("failed to decode", "err", err)
 		return false
 	}
 
@@ -498,9 +530,26 @@ func VerifySignature(fromAddress, message, signatureHex string) bool {
 
 	pubKey, err := crypto.SigToPub(messageHash, signature)
 	if err != nil {
-		fmt.Println("failed to parse", "err", err)
 		return false
 	}
 
 	return common2.HexToAddress(fromAddress) == crypto.PubkeyToAddress(*pubKey)
+}
+
+func (a *activeConnection) Close() error {
+	// Trigger graceful disconnection
+	a.cancel()
+
+	// Send close frame to client
+	closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by server")
+	if err := a.conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
+		a.logger.Infoln(fmt.Sprintf("Error sending close message: %s", err.Error()))
+	}
+
+	// Close the connection
+	if err := a.conn.Close(); err != nil {
+		a.logger.Infoln(fmt.Sprintf("Error closing connection: %s", err.Error()))
+	}
+
+	return nil
 }

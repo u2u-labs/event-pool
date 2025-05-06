@@ -9,14 +9,17 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig   `mapstructure:"server"`
-	Database  DatabaseConfig `mapstructure:"database"`
-	Redis     RedisConfig    `mapstructure:"redis"`
-	Ethereum  EthereumConfig `mapstructure:"ethereum"`
-	MQTT      MQTTConfig     `mapstructure:"mqtt"`
-	Asynq     AsynqConfig    `mapstructure:"asynq"`
-	Node      NodeConfig     `mapstructure:"node"`
-	SecretKey string
+	Server          ServerConfig   `mapstructure:"server"`
+	Database        DatabaseConfig `mapstructure:"database"`
+	Redis           RedisConfig    `mapstructure:"redis"`
+	Ethereum        EthereumConfig `mapstructure:"ethereum"`
+	MQTT            MQTTConfig     `mapstructure:"mqtt"`
+	Asynq           AsynqConfig    `mapstructure:"asynq"`
+	Node            NodeConfig     `mapstructure:"node"`
+	SecretKey       string
+	SessionContract string `mapstructure:"session_receipt_address"`
+	ChainId         int    `mapstructure:"chain_id"`
+	LogLevel        string `mapstructure:"log_level"`
 }
 
 type ServerConfig struct {

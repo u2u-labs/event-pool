@@ -3,16 +3,17 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+
 	"event-pool/internal/config"
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
-	"fmt"
-	"log"
-	"net/http"
-	"strings"
+	"go.uber.org/zap"
 )
 
 type Server struct {
@@ -22,6 +23,7 @@ type Server struct {
 	grpcServer *grpc.Server
 	ethClients map[int]*ethereum.Client
 	monitor    *monitor.Monitor
+	logger     *zap.SugaredLogger
 }
 
 // MonitorStatus represents the current status of the monitor
@@ -45,7 +47,7 @@ func (s *Server) GetActiveContracts(ctx context.Context) ([]db.ContractModel, er
 	return s.db.Contract.FindMany().Exec(ctx)
 }
 
-func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor) *Server {
+func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor, logger *zap.SugaredLogger) *Server {
 	// grpcServer := grpc.NewServer()
 	// Create monitor
 	// mon := monitor.NewMonitor(ethClients, db, grpcServer)
@@ -57,6 +59,7 @@ func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker
 		grpcServer: grpcServer,
 		ethClients: ethClients,
 		monitor:    mon,
+		logger:     logger,
 	}
 }
 
@@ -72,11 +75,11 @@ func (s *Server) StartMonitor() error {
 func (s *Server) Stop() {
 	if s.monitor != nil {
 		s.monitor.Stop()
-		log.Println("Monitor stopped")
+		s.logger.Infoln("Monitor stopped")
 	}
 	if s.grpcServer != nil {
 		s.grpcServer.Stop()
-		log.Println("GRPC server stopped")
+		s.logger.Infoln("GRPC server stopped")
 	}
 }
 
@@ -85,10 +88,10 @@ func (s *Server) Start() error {
 	if err := s.StartMonitor(); err != nil {
 		return fmt.Errorf("failed to start monitor: %w", err)
 	}
-	log.Printf("Monitor started successfully")
+	s.logger.Infof("Monitor started successfully")
 
 	// Create handlers
-	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients)
+	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
 
 	// Set up routes
 	http.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
@@ -172,9 +175,13 @@ func (s *Server) Start() error {
 	http.HandleFunc("/api/v1/token", s.grpcServer.RequestToken)
 	http.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
 	http.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
 
 	// Start the server
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
-	log.Printf("Starting server on %s", addr)
+	s.logger.Infof("Starting server on %s", addr)
 	return http.ListenAndServe(addr, nil)
 }

@@ -14,6 +14,8 @@ import (
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,18 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
+
+	zapConfig := zap.NewDevelopmentConfig()
+
+	lvl, _ := zapcore.ParseLevel(cfg.LogLevel)
+	zapConfig.Level = zap.NewAtomicLevelAt(lvl)
+	zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+
+	zLogger, err := zapConfig.Build()
+	if err != nil {
+		panic(err) // or handle gracefully
+	}
+	logger := zLogger.Sugar()
 
 	// Initialize database
 	dbClient, err := db.NewClient()
@@ -44,13 +58,13 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize gRPC server
-	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey)
+	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, cfg.SessionContract, ethClients[cfg.ChainId], logger.Named("server"))
 
 	// Initialize monitor
-	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer)
+	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer, logger.Named("monitor"))
 
 	// Initialize worker
-	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, mon)
+	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, mon, logger.Named("worker"))
 	go func() {
 		if err := worker.Start(); err != nil {
 			log.Printf("Worker error: %v", err)
@@ -58,7 +72,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Initialize API server
-	server := api.NewServer(cfg, dbClient, worker, ethClients, grpcServer, mon)
+	server := api.NewServer(cfg, dbClient, worker, ethClients, grpcServer, mon, logger.Named("api"))
 	go func() {
 		if err := server.Start(); err != nil {
 			log.Printf("Server error: %v", err)
@@ -70,7 +84,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down...")
+	logger.Infoln("Shutting down...")
 
 	// Graceful shutdown
 	server.Stop()

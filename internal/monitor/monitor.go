@@ -22,6 +22,7 @@ import (
 	"event-pool/prisma/db"
 	"event-pool/types"
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -36,9 +37,10 @@ type Monitor struct {
 	lastBlocks         map[int]uint64
 	backfilling        map[string]bool
 	readyForMonitoring map[string]bool
+	logger             *zap.SugaredLogger
 }
 
-func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, grpcServer *grpc.Server) *Monitor {
+func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, grpcServer *grpc.Server, logger *zap.SugaredLogger) *Monitor {
 	return &Monitor{
 		ethClients:         ethClients,
 		db:                 db,
@@ -47,6 +49,7 @@ func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, grpcSe
 		lastBlocks:         make(map[int]uint64),
 		backfilling:        make(map[string]bool),
 		readyForMonitoring: make(map[string]bool),
+		logger:             logger,
 	}
 }
 
@@ -59,8 +62,8 @@ func (m *Monitor) Start(ctx context.Context) error {
 	m.running = true
 	m.mu.Unlock()
 
-	fmt.Printf("\n=== Starting Event Monitor ===\n")
-	fmt.Printf("Initializing monitor for all registered contracts...\n")
+	m.logger.Infof("\n=== Starting Event Monitor ===\n")
+	m.logger.Infof("Initializing monitor for all registered contracts...\n")
 
 	// Get all contracts from the database
 	contracts, err := m.db.Contract.FindMany().Exec(ctx)
@@ -71,13 +74,13 @@ func (m *Monitor) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to get contracts: %v", err)
 	}
 
-	fmt.Printf("Found %d contracts to monitor\n", len(contracts))
+	m.logger.Infof("Found %d contracts to monitor\n", len(contracts))
 
 	for chainID, client := range m.ethClients {
 		block, err := client.GetLatestBlock()
 		if err == nil {
 			m.lastBlocks[chainID] = block
-			fmt.Printf("Initial block for chain %d: %d\n", chainID, block)
+			m.logger.Infof("Initial block for chain %d: %d\n", chainID, block)
 		}
 	}
 
@@ -95,7 +98,7 @@ func (m *Monitor) Start(ctx context.Context) error {
 
 		// Start a goroutine for each contract
 		go func(c interface{}) {
-			fmt.Printf("Starting independent monitor for contract %s\n", c.(db.ContractModel).ID)
+			m.logger.Infof("Starting independent monitor for contract %s\n", c.(db.ContractModel).ID)
 			m.monitorContract(contractCtx, c)
 		}(contract)
 	}
@@ -106,11 +109,11 @@ func (m *Monitor) Start(ctx context.Context) error {
 	// Start a goroutine to periodically check for new contracts
 	go m.checkForNewContracts(ctx)
 
-	fmt.Printf("Monitor started successfully. Each contract will be monitored independently.\n")
-	fmt.Printf("Contracts being backfilled will be monitored concurrently with backfill.\n")
-	fmt.Printf("Will log current blocks every 30 seconds.\n")
-	fmt.Printf("Will check for new contracts every 10 seconds.\n")
-	fmt.Printf("=== Event Monitor Ready ===\n\n")
+	m.logger.Infof("Monitor started successfully. Each contract will be monitored independently.\n")
+	m.logger.Infof("Contracts being backfilled will be monitored concurrently with backfill.\n")
+	m.logger.Infof("Will log current blocks every 30 seconds.\n")
+	m.logger.Infof("Will check for new contracts every 10 seconds.\n")
+	m.logger.Infof("=== Event Monitor Ready ===\n\n")
 
 	return nil
 }
@@ -134,7 +137,7 @@ func (m *Monitor) logCurrentBlock(ctx context.Context) {
 			for chainID, client := range m.ethClients {
 				block, err := client.GetLatestBlock()
 				if err == nil {
-					fmt.Printf("Current block on chain %d: %d\n", chainID, block)
+					m.logger.Infof("Current block on chain %d: %d\n", chainID, block)
 				}
 			}
 			m.mu.RUnlock()
@@ -160,7 +163,7 @@ func (m *Monitor) Stop() {
 	m.backfilling = make(map[string]bool)
 	m.readyForMonitoring = make(map[string]bool)
 	m.running = false
-	fmt.Printf("Stopped event monitor\n")
+	m.logger.Infof("Stopped event monitor\n")
 }
 
 func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
@@ -185,15 +188,15 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 		id = contractValue.FieldByName("ID").String()
 	}
 
-	fmt.Printf("\n=== Starting Monitor for Contract ===\n")
-	fmt.Printf("Chain ID: %d\n", chainID)
-	fmt.Printf("Address: %s\n", address)
-	fmt.Printf("Event Signature: %s\n", eventSignature)
-	fmt.Printf("Contract ID: %s\n", id)
+	m.logger.Infof("\n=== Starting Monitor for Contract ===\n")
+	m.logger.Infof("Chain ID: %d\n", chainID)
+	m.logger.Infof("Address: %s\n", address)
+	m.logger.Infof("Event Signature: %s\n", eventSignature)
+	m.logger.Infof("Contract ID: %s\n", id)
 
 	client, ok := m.ethClients[int(chainID)]
 	if !ok {
-		fmt.Printf("ERROR: No Ethereum client found for chain ID %d\n", chainID)
+		m.logger.Infof("ERROR: No Ethereum client found for chain ID %d\n", chainID)
 		return
 	}
 
@@ -201,19 +204,19 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 	if eventABI != "" {
 		err := client.RegisterEventABI(eventSignature, eventABI)
 		if err != nil {
-			fmt.Printf("WARNING: Failed to register event ABI: %v\n", err)
+			m.logger.Infof("WARNING: Failed to register event ABI: %v\n", err)
 		} else {
-			fmt.Printf("Successfully registered event ABI for signature %s\n", eventSignature)
+			m.logger.Infof("Successfully registered event ABI for signature %s\n", eventSignature)
 		}
 	}
 
 	latestBlock, err := client.GetLatestBlock()
 	if err != nil {
-		fmt.Printf("ERROR: Failed to get latest block: %v\n", err)
+		m.logger.Infof("ERROR: Failed to get latest block: %v\n", err)
 		return
 	}
 
-	fmt.Printf("Starting to monitor from block %d\n", latestBlock)
+	m.logger.Infof("Starting to monitor from block %d\n", latestBlock)
 
 	m.mu.Lock()
 	if _, exists := m.lastBlocks[int(chainID)]; !exists {
@@ -222,34 +225,34 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 	lastProcessedBlock := m.lastBlocks[int(chainID)]
 	m.mu.Unlock()
 
-	fmt.Printf("Last processed block: %d\n", lastProcessedBlock)
-	fmt.Printf("=== Monitor Initialized ===\n\n")
+	m.logger.Infof("Last processed block: %d\n", lastProcessedBlock)
+	m.logger.Infof("=== Monitor Initialized ===\n\n")
 
 	pollTicker := time.NewTicker(1 * time.Second)
 	defer pollTicker.Stop()
 
 	lastBackfillStatus := m.IsContractBackfilling(id)
-	fmt.Printf("Initial backfill status for contract %s: %v\n", id, lastBackfillStatus)
+	m.logger.Infof("Initial backfill status for contract %s: %v\n", id, lastBackfillStatus)
 
 	for {
 		select {
 		case <-ctx.Done():
-			fmt.Printf("Stopping monitor for contract %s\n", address)
+			m.logger.Infof("Stopping monitor for contract %s\n", address)
 			return
 		case <-pollTicker.C:
 			currentBackfillStatus := m.IsContractBackfilling(id)
 			if currentBackfillStatus != lastBackfillStatus {
 				if currentBackfillStatus {
-					fmt.Printf("Contract %s is now being backfilled\n", id)
+					m.logger.Infof("Contract %s is now being backfilled\n", id)
 				} else {
-					fmt.Printf("Contract %s is no longer being backfilled\n", id)
+					m.logger.Infof("Contract %s is no longer being backfilled\n", id)
 				}
 				lastBackfillStatus = currentBackfillStatus
 			}
 
 			currentBlock, err := client.GetLatestBlock()
 			if err != nil {
-				fmt.Printf("ERROR: Failed to get latest block: %v\n", err)
+				m.logger.Infof("ERROR: Failed to get latest block: %v\n", err)
 				continue
 			}
 
@@ -258,9 +261,9 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 			m.mu.Unlock()
 
 			if currentBlock > lastProcessedBlock {
-				// fmt.Printf("\n=== Processing New Blocks ===\n")
-				// fmt.Printf("Contract: %s\n", address)
-				// fmt.Printf("Processing blocks %d to %d\n", lastProcessedBlock+1, currentBlock)
+				// m.logger.Infof()("\n=== Processing New Blocks ===\n")
+				// m.logger.Infof()("Contract: %s\n", address)
+				// m.logger.Infof()("Processing blocks %d to %d\n", lastProcessedBlock+1, currentBlock)
 
 				batchSize := uint64(5)
 				for fromBlock := lastProcessedBlock + 1; fromBlock <= currentBlock; fromBlock += batchSize {
@@ -269,7 +272,7 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 						toBlock = currentBlock
 					}
 
-					fmt.Printf("Fetching logs for blocks %d to %d\n", fromBlock, toBlock)
+					m.logger.Infof("Fetching logs for blocks %d to %d\n", fromBlock, toBlock)
 
 					// Get logs for the block range
 					logs, err := client.FilterLogs(
@@ -282,11 +285,11 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 					)
 
 					if err != nil {
-						fmt.Printf("ERROR: Failed to fetch logs: %v\n", err)
+						m.logger.Infof("ERROR: Failed to fetch logs: %v\n", err)
 						continue
 					}
 
-					fmt.Printf("Found %d logs for blocks %d to %d\n", len(logs), fromBlock, toBlock)
+					m.logger.Infof("Found %d logs for blocks %d to %d\n", len(logs), fromBlock, toBlock)
 
 					m.ProcessLogsEvent(ctx, logs, client, eventSignature, chainID, address)
 
@@ -300,7 +303,7 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 							ChainId:         int(chainID),
 						})
 						if err != nil {
-							fmt.Printf("ERROR: Failed to send transaction: %v\n", err)
+							m.logger.Infof("ERROR: Failed to send transaction: %v\n", err)
 						}
 					}
 
@@ -310,11 +313,11 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 					lastProcessedBlock = toBlock
 					m.mu.Unlock()
 
-					fmt.Printf("Updated last processed block to %d\n", lastProcessedBlock)
-					fmt.Printf("=== Finished Processing Blocks ===\n\n")
+					m.logger.Infof("Updated last processed block to %d\n", lastProcessedBlock)
+					m.logger.Infof("=== Finished Processing Blocks ===\n\n")
 				}
 			} else {
-				fmt.Printf("No new blocks to process. Current: %d, Last: %d\n", currentBlock, lastProcessedBlock)
+				m.logger.Infof("No new blocks to process. Current: %d, Last: %d\n", currentBlock, lastProcessedBlock)
 			}
 		}
 	}
@@ -324,13 +327,13 @@ func (m *Monitor) ProcessLogsEvent(ctx context.Context, logs []ethereum.Log, cli
 	for _, eventLog := range logs {
 		decodedData, err := client.GetDecoder().DecodeEvent(eventSignature, eventLog.Data, eventLog.Topics)
 		if err != nil {
-			fmt.Printf("ERROR: Failed to decode event data: %v\n", err)
+			m.logger.Infof("ERROR: Failed to decode event data: %v\n", err)
 			decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
 		}
 
 		err = m.processEvent(ctx, int(chainID), address, eventSignature, eventLog, decodedData)
 		if err != nil {
-			fmt.Printf("ERROR: Failed to process event: %v\n", err)
+			m.logger.Infof("ERROR: Failed to process event: %v\n", err)
 			continue
 		}
 	}
@@ -408,7 +411,7 @@ func (m *Monitor) MarkContractBackfilling(contractID string) {
 
 	m.readyForMonitoring[contractID] = true
 
-	fmt.Printf("Marked contract %s as being backfilled\n", contractID)
+	m.logger.Infof("Marked contract %s as being backfilled\n", contractID)
 }
 
 func (m *Monitor) MarkContractBackfillComplete(contractID string) {
@@ -419,7 +422,7 @@ func (m *Monitor) MarkContractBackfillComplete(contractID string) {
 
 	m.readyForMonitoring[contractID] = true
 
-	fmt.Printf("Marked contract %s as having completed backfill\n", contractID)
+	m.logger.Infof("Marked contract %s as having completed backfill\n", contractID)
 }
 
 func (m *Monitor) IsContractBackfilling(contractID string) bool {
@@ -456,8 +459,8 @@ func (m *Monitor) RegisterContract(ctx context.Context, contract interface{}) er
 		id = contractValue.FieldByName("ID").String()
 	}
 
-	fmt.Printf("\n=== Registering New Contract with Monitor ===\n")
-	fmt.Printf("Contract ID: %s\n", id)
+	m.logger.Infof("\n=== Registering New Contract with Monitor ===\n")
+	m.logger.Infof("Contract ID: %s\n", id)
 
 	m.mu.Lock()
 	m.readyForMonitoring[id] = true
@@ -469,12 +472,12 @@ func (m *Monitor) RegisterContract(ctx context.Context, contract interface{}) er
 	m.mu.Unlock()
 
 	go func(c interface{}, id string) {
-		fmt.Printf("Starting independent monitor for newly registered contract %s\n", id)
+		m.logger.Infof("Starting independent monitor for newly registered contract %s\n", id)
 		m.monitorContract(contractCtx, c)
 	}(contract, id)
 
-	fmt.Printf("Successfully registered contract %s with monitor\n", id)
-	fmt.Printf("=== Contract Registration Complete ===\n\n")
+	m.logger.Infof("Successfully registered contract %s with monitor\n", id)
+	m.logger.Infof("=== Contract Registration Complete ===\n\n")
 
 	return nil
 }
@@ -497,7 +500,7 @@ func (m *Monitor) checkForNewContracts(ctx context.Context) {
 
 			contracts, err := m.db.Contract.FindMany().Exec(ctx)
 			if err != nil {
-				fmt.Printf("Error getting contracts: %v\n", err)
+				m.logger.Infof("Error getting contracts: %v\n", err)
 				continue
 			}
 
@@ -512,9 +515,9 @@ func (m *Monitor) checkForNewContracts(ctx context.Context) {
 					continue
 				}
 
-				fmt.Printf("Found new contract %s, registering with monitor\n", contractID)
+				m.logger.Infof("Found new contract %s, registering with monitor\n", contractID)
 				if err := m.RegisterContract(ctx, contract); err != nil {
-					fmt.Printf("Error registering contract %s: %v\n", contractID, err)
+					m.logger.Infof("Error registering contract %s: %v\n", contractID, err)
 				}
 			}
 		}
@@ -590,7 +593,7 @@ func (m *Monitor) SendTx(ctx context.Context, filter types.FilterLogsParams) err
 		return err
 	}
 
-	fmt.Printf("Transaction ID: %s\n", response["txHash"])
+	m.logger.Infof("Transaction ID: %s\n", response["txHash"])
 
 	return nil
 }
