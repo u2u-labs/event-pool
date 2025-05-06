@@ -3,13 +3,14 @@ package server
 import (
 	"context"
 	"errors"
-	"event-pool/pkg/ethereum"
 	"fmt"
 	"math/big"
 	"net"
 	"net/http"
 	"path/filepath"
 	"time"
+
+	"event-pool/pkg/ethereum"
 
 	"event-pool/blockchain"
 	"event-pool/chain"
@@ -222,6 +223,8 @@ func NewServer(config *Config) (*Server, error) {
 				PriceLimit:          m.config.PriceLimit,
 				MaxAccountEnqueued:  m.config.MaxAccountEnqueued,
 				DeploymentWhitelist: deploymentWhitelist,
+				MonitorApiPort:      m.config.MonitorApiPort,
+				MonitorApiHost:      m.config.MonitorApiHost,
 			},
 		)
 		if err != nil {
@@ -453,6 +456,7 @@ func (s *Server) Close() {
 	// close DataDog profiler
 	s.closeDataDogProfiler()
 	db2.Close(s.db)
+	s.blockchain.Close()
 }
 
 // Entry is a consensus configuration entry

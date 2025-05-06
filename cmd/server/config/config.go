@@ -27,6 +27,13 @@ type Config struct {
 	Database           *Database           `json:"database" yaml:"database"`
 	EthereumRpc        *server.EthereumRpc `json:"ethereum" yaml:"ethereum"`
 	NodeStorageAddress string              `json:"node_storage_address" yaml:"node_storage_address"`
+	MonitorConfig      *MonitorConfig      `json:"server" yaml:"server"`
+}
+
+type MonitorConfig struct {
+	Port    string `json:"port" yaml:"port"`
+	Host    string `json:"host" yaml:"host"`
+	Address string `json:"address" yaml:"address"`
 }
 
 // Telemetry holds the config details for metric services.

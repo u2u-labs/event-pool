@@ -266,6 +266,11 @@ func (s *SignerImpl) VerifyParentCommittedSeals(
 		return err
 	}
 
+	// skip if the parent is genesis
+	if parent.Number == 0 {
+		return nil
+	}
+
 	if parentCommittedSeals == nil || parentCommittedSeals.Num() == 0 {
 		// Throw error for the proposed header
 		if mustExist {

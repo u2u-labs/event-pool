@@ -3,14 +3,16 @@ package txpool
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"net/http"
+
 	"event-pool/helper/hex"
 	ws2 "event-pool/helper/ws"
 	"event-pool/txpool/proto"
 	"event-pool/types"
-	"fmt"
+	"github.com/golang/protobuf/ptypes/any"
 	"github.com/gorilla/websocket"
 	empty "google.golang.org/protobuf/types/known/emptypb"
-	"net/http"
 )
 
 // Status implements the GRPC status endpoint. Returns the number of transactions in the pool
@@ -53,6 +55,30 @@ func (p *TxPool) AddTxn(ctx context.Context, raw *proto.AddTxnReq) (*proto.AddTx
 
 	return &proto.AddTxnResp{
 		TxHash: txn.Hash.String(),
+	}, nil
+}
+
+func (p *TxPool) RegisterContract(ctx context.Context, req *proto.GossipRegisterContractRequest) (*proto.GossipRegisterContractResponse, error) {
+	if len(req.Data) == 0 {
+		return nil, fmt.Errorf("data's field raw is empty")
+	}
+
+	// broadcast the transaction only if a topic
+	// subscription is present
+	if p.topic2 != nil {
+		tx := &proto.RegisterContractRequest{
+			Raw: &any.Any{
+				Value: []byte(req.Data),
+			},
+		}
+
+		if err := p.topic2.Publish(tx); err != nil {
+			p.logger.Error("failed to topic tx", "err", err)
+		}
+	}
+
+	return &proto.GossipRegisterContractResponse{
+		Message: "ok",
 	}, nil
 }
 

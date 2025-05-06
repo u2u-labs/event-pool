@@ -202,6 +202,11 @@ func (s *Server) GetEvents(ctx context.Context, req *pb.GetEventsRequest) (*pb.G
 }
 
 func (s *Server) RequestToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var body struct {
 		Address         string `json:"address"`
 		Signature       string `json:"signature"`
@@ -385,6 +390,11 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 }
 
 func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
+	if req.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	var body struct {
 		Token string `json:"token"`
 	}

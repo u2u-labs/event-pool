@@ -306,7 +306,7 @@ func (d *DiscoveryService) regularPeerDiscovery() {
 	//d.logger.Debug("running regular peer discovery", "peer", peerID.String())
 	// Try to discover the peers connected to the reference peer
 	if err := d.attemptToFindPeers(*peerID); err != nil {
-		d.logger.Error(
+		d.logger.Errorw(
 			"Failed to find new peers",
 			"peer",
 			peerID,

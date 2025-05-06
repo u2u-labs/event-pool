@@ -1,11 +1,17 @@
 package txpool
 
 import (
+	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
+	"net/http"
 	"time"
 
+	"event-pool/internal/api"
 	"go.uber.org/zap"
 
 	"github.com/golang/protobuf/ptypes/any"
@@ -23,6 +29,8 @@ const (
 	txSlotSize  = 32 * 1024  // 32kB
 	txMaxSize   = 128 * 1024 // 128Kb
 	topicNameV1 = "txpool/0.1"
+
+	contractRegistrationV1 = "contract/registration/0.1"
 
 	// maximum allowed number of times an account
 	// was excluded from block building (ibft.writeTransactions)
@@ -99,6 +107,8 @@ type Config struct {
 	MaxSlots            uint64
 	MaxAccountEnqueued  uint64
 	DeploymentWhitelist []types.Address
+	MonitorApiPort      string
+	MonitorApiHost      string
 }
 
 /* All requests are passed to the main loop
@@ -154,7 +164,8 @@ type TxPool struct {
 	index lookupMap
 
 	// networking stack
-	topic *network.Topic
+	topic  *network.Topic
+	topic2 *network.Topic
 
 	// gauge for measuring pool capacity
 	gauge slotGauge
@@ -186,6 +197,10 @@ type TxPool struct {
 
 	// deploymentWhitelist map
 	deploymentWhitelist deploymentWhitelist
+
+	// monitor API
+	monitorApiPort string
+	monitorApiHost string
 
 	// indicates which txpool operator commands should be implemented
 	proto.UnimplementedTxnPoolOperatorServer
@@ -236,14 +251,16 @@ func NewTxPool(
 	config *Config,
 ) (*TxPool, error) {
 	pool := &TxPool{
-		logger:      logger.Named("txpool"),
-		store:       store,
-		metrics:     metrics,
-		executables: newPricedQueue(),
-		accounts:    accountsMap{maxEnqueuedLimit: config.MaxAccountEnqueued},
-		index:       lookupMap{all: make(map[types.Hash]*types.Transaction)},
-		gauge:       slotGauge{height: 0, max: config.MaxSlots},
-		priceLimit:  config.PriceLimit,
+		logger:         logger.Named("txpool"),
+		store:          store,
+		metrics:        metrics,
+		executables:    newPricedQueue(),
+		accounts:       accountsMap{maxEnqueuedLimit: config.MaxAccountEnqueued},
+		index:          lookupMap{all: make(map[types.Hash]*types.Transaction)},
+		gauge:          slotGauge{height: 0, max: config.MaxSlots},
+		priceLimit:     config.PriceLimit,
+		monitorApiHost: config.MonitorApiHost,
+		monitorApiPort: config.MonitorApiPort,
 
 		//	main loop channels
 		enqueueReqCh: make(chan enqueueRequest),
@@ -268,6 +285,18 @@ func NewTxPool(
 		}
 
 		pool.topic = topic
+
+		// subscribe to the gossip protocol
+		topic2, err := network.NewTopic(contractRegistrationV1, &proto.RegisterContractRequest{})
+		if err != nil {
+			return nil, err
+		}
+
+		if subscribeErr := topic2.Subscribe(pool.addGossipContractRegistration); subscribeErr != nil {
+			return nil, fmt.Errorf("unable to subscribe to gossip topic, %w", subscribeErr)
+		}
+
+		pool.topic2 = topic2
 	}
 
 	// initialize deployment whitelist
@@ -852,6 +881,77 @@ func (p *TxPool) addGossipTx(obj interface{}, _ peer.ID) {
 
 		p.logger.Errorw("failed to add broadcast tx", "err", err, "hash", tx.Hash.String())
 	}
+}
+
+func (p *TxPool) addContractRegistration(req *api.RegisterContractRequest) error {
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	// send post request to the server
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s:%s/api/v1/contracts",
+			p.monitorApiHost, p.monitorApiPort),
+		"application/json",
+		bytes.NewBuffer(payload),
+	)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+		return fmt.Errorf("failed to send transaction: %s", resp.Status)
+	}
+
+	// read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	p.logger.Infof("response %s\n", body)
+
+	return nil
+}
+
+// addGossipContractRegistration handles receiving contract registration
+// gossiped by the network.
+func (p *TxPool) addGossipContractRegistration(obj interface{}, _ peer.ID) {
+	raw, ok := obj.(*proto.RegisterContractRequest)
+	if !ok {
+		p.logger.Errorw("failed to cast gossiped message to contract registration")
+
+		return
+	}
+
+	// Verify that the gossiped transaction message is not empty
+	if raw == nil || raw.Raw == nil {
+		p.logger.Errorw("malformed gossip contract event message received")
+
+		return
+	}
+
+	tx := new(api.RegisterContractRequest)
+
+	// Base64-decode first
+	decoded, err := base64.StdEncoding.DecodeString(string(raw.Raw.Value))
+	if err != nil {
+		p.logger.Errorw("failed to base64 decode broadcast event contract registration", "err", err)
+		return
+	}
+
+	// Now unmarshal the decoded JSON
+	if err := json.Unmarshal(decoded, tx); err != nil {
+		p.logger.Errorw("failed to decode JSON for contract registration", "err", err)
+		return
+	}
+
+	// add contract registration
+	if err := p.addContractRegistration(tx); err != nil {
+		p.logger.Debugw("failed to add broadcast contract registration", "err", err)
+		return
+	}
+	p.logger.Infow("added contract registration from peers")
 }
 
 // resetAccounts updates existing accounts with the new nonce and prunes stale transactions.

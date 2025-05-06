@@ -1,8 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
+	"github.com/spf13/viper"
 )
 
 type ContractHandler struct {
@@ -145,6 +148,55 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 
 	log.Printf("Successfully enqueued backfill task for contract %s", req.ContractAddr)
 
+	// send gossip contract registration to all peers
+	go func() {
+		reqBytes, err := json.Marshal(req)
+		if err != nil {
+			fmt.Println("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+		gossipedPayload, err := json.Marshal(map[string]any{
+			"data": reqBytes,
+			"from": "",
+		})
+		if err != nil {
+			fmt.Println("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+
+		// send post request to the server
+		resp, err := http.Post(
+			fmt.Sprintf("http://localhost%s/txpool/contract/register",
+				viper.GetString("jsonrpc_addr")),
+			"application/json",
+			bytes.NewBuffer(gossipedPayload),
+		)
+		if err != nil {
+			fmt.Println("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+			fmt.Println(fmt.Errorf("failed to send transaction: %s", resp.Status))
+			return
+		}
+
+		// read response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Println("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+		// parse response body
+		var response map[string]interface{}
+		err = json.Unmarshal(body, &response)
+		if err != nil {
+			fmt.Println("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+	}()
+
+	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RegisterContractResponse{ID: contract.ID})
 }

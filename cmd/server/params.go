@@ -163,5 +163,7 @@ func (p *serverParams) generateConfig() *server.Config {
 		EpochSize:          p.rawConfig.NodeChain.Params.EpochSize,
 		EthereumRpc:        p.rawConfig.EthereumRpc,
 		NodeStorageAddress: p.rawConfig.NodeStorageAddress,
+		MonitorApiPort:     p.rawConfig.MonitorConfig.Port,
+		MonitorApiHost:     p.rawConfig.MonitorConfig.Host,
 	}
 }

@@ -468,10 +468,10 @@ func (m *Monitor) RegisterContract(ctx context.Context, contract interface{}) er
 	m.monitors[id] = cancel
 	m.mu.Unlock()
 
-	go func(c interface{}) {
-		fmt.Printf("Starting independent monitor for newly registered contract %s\n", c.(db.ContractModel).ID)
+	go func(c interface{}, id string) {
+		fmt.Printf("Starting independent monitor for newly registered contract %s\n", id)
 		m.monitorContract(contractCtx, c)
-	}(contract)
+	}(contract, id)
 
 	fmt.Printf("Successfully registered contract %s with monitor\n", id)
 	fmt.Printf("=== Contract Registration Complete ===\n\n")

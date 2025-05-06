@@ -39,6 +39,8 @@ type Config struct {
 
 	EthereumRpc        *EthereumRpc
 	NodeStorageAddress string
+	MonitorApiPort     string
+	MonitorApiHost     string
 }
 
 type EthereumRpc struct {

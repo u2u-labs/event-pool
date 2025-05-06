@@ -20,9 +20,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TxnPoolOperator_Status_FullMethodName    = "/v1.TxnPoolOperator/Status"
-	TxnPoolOperator_AddTxn_FullMethodName    = "/v1.TxnPoolOperator/AddTxn"
-	TxnPoolOperator_Subscribe_FullMethodName = "/v1.TxnPoolOperator/Subscribe"
+	TxnPoolOperator_Status_FullMethodName           = "/v1.TxnPoolOperator/Status"
+	TxnPoolOperator_AddTxn_FullMethodName           = "/v1.TxnPoolOperator/AddTxn"
+	TxnPoolOperator_RegisterContract_FullMethodName = "/v1.TxnPoolOperator/RegisterContract"
+	TxnPoolOperator_Subscribe_FullMethodName        = "/v1.TxnPoolOperator/Subscribe"
 )
 
 // TxnPoolOperatorClient is the client API for TxnPoolOperator service.
@@ -33,6 +34,8 @@ type TxnPoolOperatorClient interface {
 	Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*TxnPoolStatusResp, error)
 	// AddTxn adds a local transaction to the pool
 	AddTxn(ctx context.Context, in *AddTxnReq, opts ...grpc.CallOption) (*AddTxnResp, error)
+	// RegisterContract publishes contract registration to the network
+	RegisterContract(ctx context.Context, in *GossipRegisterContractRequest, opts ...grpc.CallOption) (*GossipRegisterContractResponse, error)
 	// Subscribe subscribes for new events in the txpool
 	Subscribe(ctx context.Context, in *SubscribeRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[TxPoolEvent], error)
 }
@@ -59,6 +62,16 @@ func (c *txnPoolOperatorClient) AddTxn(ctx context.Context, in *AddTxnReq, opts 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AddTxnResp)
 	err := c.cc.Invoke(ctx, TxnPoolOperator_AddTxn_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *txnPoolOperatorClient) RegisterContract(ctx context.Context, in *GossipRegisterContractRequest, opts ...grpc.CallOption) (*GossipRegisterContractResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GossipRegisterContractResponse)
+	err := c.cc.Invoke(ctx, TxnPoolOperator_RegisterContract_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -92,6 +105,8 @@ type TxnPoolOperatorServer interface {
 	Status(context.Context, *emptypb.Empty) (*TxnPoolStatusResp, error)
 	// AddTxn adds a local transaction to the pool
 	AddTxn(context.Context, *AddTxnReq) (*AddTxnResp, error)
+	// RegisterContract publishes contract registration to the network
+	RegisterContract(context.Context, *GossipRegisterContractRequest) (*GossipRegisterContractResponse, error)
 	// Subscribe subscribes for new events in the txpool
 	Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[TxPoolEvent]) error
 	mustEmbedUnimplementedTxnPoolOperatorServer()
@@ -109,6 +124,9 @@ func (UnimplementedTxnPoolOperatorServer) Status(context.Context, *emptypb.Empty
 }
 func (UnimplementedTxnPoolOperatorServer) AddTxn(context.Context, *AddTxnReq) (*AddTxnResp, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddTxn not implemented")
+}
+func (UnimplementedTxnPoolOperatorServer) RegisterContract(context.Context, *GossipRegisterContractRequest) (*GossipRegisterContractResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RegisterContract not implemented")
 }
 func (UnimplementedTxnPoolOperatorServer) Subscribe(*SubscribeRequest, grpc.ServerStreamingServer[TxPoolEvent]) error {
 	return status.Errorf(codes.Unimplemented, "method Subscribe not implemented")
@@ -170,6 +188,24 @@ func _TxnPoolOperator_AddTxn_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TxnPoolOperator_RegisterContract_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GossipRegisterContractRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TxnPoolOperatorServer).RegisterContract(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TxnPoolOperator_RegisterContract_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TxnPoolOperatorServer).RegisterContract(ctx, req.(*GossipRegisterContractRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _TxnPoolOperator_Subscribe_Handler(srv interface{}, stream grpc.ServerStream) error {
 	m := new(SubscribeRequest)
 	if err := stream.RecvMsg(m); err != nil {
@@ -195,6 +231,10 @@ var TxnPoolOperator_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddTxn",
 			Handler:    _TxnPoolOperator_AddTxn_Handler,
+		},
+		{
+			MethodName: "RegisterContract",
+			Handler:    _TxnPoolOperator_RegisterContract_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
