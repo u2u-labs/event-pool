@@ -82,10 +82,6 @@ services:
       - "10002:10002"  # JSON-RPC
       - "10006:10006"  # libp2p
     environment:
-      CONFIG_FILE: config.yaml
-      GRPC_ADDRESS: :10000
-      LIBP2P_ADDRESS: :10006
-      JSONRPC_ADDRESS: :10002
       NODE_PRIV_KEY: ${NODE_PRIV_KEY}
       DATA_DIR: ${DATA_DIR}
     volumes:
