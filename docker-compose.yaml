@@ -33,24 +33,6 @@ services:
       timeout: 5s
       retries: 5
 
-#  mqtt:
-#    image: eclipse-mosquitto:latest
-#    container_name: event-emitter-mqtt
-#    restart: always
-#    ports:
-#      - "1883:1883"
-#      - "9001:9001"
-#    volumes:
-#      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-#      - ../mqtt_data:/mosquitto/data
-#      - ../mqtt_log:/mosquitto/log
-#    command: 'mosquitto -c /mosquitto/config/mosquitto.conf'
-#    logging:
-#      driver: "json-file"
-#      options:
-#        max-size: 300m
-#        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
-
   api:
     build:
       context: .
@@ -63,6 +45,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - ./.env
     ports:
       - "8080:8080"
       - "9090:9090"
@@ -75,3 +59,64 @@ services:
       options:
         max-size: 300m
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+    entrypoint: ["/app/docker-entrypoint.sh"]
+
+  node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: u2ulabs/event-pool:latest
+    container_name: event-emitter-node
+    restart: always
+    env_file:
+      - ./.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+    ports:
+      - "10000:10000"  # gRPC
+      - "10002:10002"  # JSON-RPC
+      - "10006:10006"  # libp2p
+    environment:
+      CONFIG_FILE: config.yaml
+      GRPC_ADDRESS: :10000
+      LIBP2P_ADDRESS: :10006
+      JSONRPC_ADDRESS: :10002
+      NODE_PRIV_KEY: ${NODE_PRIV_KEY}
+      DATA_DIR: ${DATA_DIR}
+    volumes:
+      - ./config.yaml:/app/config.yaml
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: 300m
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - |
+        if [ ! -z "${NODE_PRIV_KEY}" ]; then
+          cd /app && \
+          ./event-pool secrets init --data-dir ${DATA_DIR} && \
+          printf "%s" "${NODE_PRIV_KEY}" > ${DATA_DIR}/consensus/validator.key && \
+          chmod 600 ${DATA_DIR}/consensus/validator.key
+        fi && \
+        exec ./event-pool server \
+          --data-dir "${DATA_DIR}" \
+          --config "${CONFIG_FILE}" \
+          --grpc-address "${GRPC_ADDRESS}" \
+          --libp2p "${LIBP2P_ADDRESS}" \
+          --jsonrpc "${JSONRPC_ADDRESS}"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:10002/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+

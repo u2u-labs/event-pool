@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -75,6 +76,7 @@ func Load() (*Config, error) {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "__"))
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {

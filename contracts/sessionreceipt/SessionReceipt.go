@@ -42,7 +42,7 @@ type LibSessionReceiptSessionReceipt struct {
 
 // SessionReceiptMetaData contains all meta data concerning the SessionReceipt contract.
 var SessionReceiptMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_nodesStorage\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_usageDepositor\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"SessionReceiptConfirmed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"}],\"name\":\"SessionReceiptCreated\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"confirmSessionReceipt\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"enumTokenType\",\"name\":\"tokenType\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"createSessionReceipt\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"}],\"name\":\"getLatestReceipt\",\"outputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"internalType\":\"enumTokenType\",\"name\":\"tokenType\",\"type\":\"uint8\"},{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"enumLibSessionReceipt.SessionReceiptStatus\",\"name\":\"status\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"internalType\":\"structLibSessionReceipt.SessionReceipt\",\"name\":\"receipt\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"}],\"name\":\"getNonce\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"getSessionReceipt\",\"outputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"internalType\":\"enumTokenType\",\"name\":\"tokenType\",\"type\":\"uint8\"},{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"enumLibSessionReceipt.SessionReceiptStatus\",\"name\":\"status\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"internalType\":\"structLibSessionReceipt.SessionReceipt\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"nodesStorage\",\"outputs\":[{\"internalType\":\"contractINodesStorage\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"redeemReceipt\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"usageDepositor\",\"outputs\":[{\"internalType\":\"contractIUsageDepositor\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_nodesStorage\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"_usageDepositor\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"previousOwner\",\"type\":\"address\"},{\"indexed\":true,\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"OwnershipTransferred\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"SessionReceiptConfirmed\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"SessionReceiptCreated\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"SessionReceiptRedeemed\",\"type\":\"event\"},{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"confirmSessionReceipt\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"enumTokenType\",\"name\":\"tokenType\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"createSessionReceipt\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"}],\"name\":\"getConfirmedNonces\",\"outputs\":[{\"internalType\":\"uint256[]\",\"name\":\"\",\"type\":\"uint256[]\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"}],\"name\":\"getLatestReceipt\",\"outputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"internalType\":\"enumTokenType\",\"name\":\"tokenType\",\"type\":\"uint8\"},{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"enumLibSessionReceipt.SessionReceiptStatus\",\"name\":\"status\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"internalType\":\"structLibSessionReceipt.SessionReceipt\",\"name\":\"receipt\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"}],\"name\":\"getNonce\",\"outputs\":[{\"internalType\":\"uint256\",\"name\":\"\",\"type\":\"uint256\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"getSessionReceipt\",\"outputs\":[{\"components\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"node\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"totalSecondsServed\",\"type\":\"uint256\"},{\"internalType\":\"enumTokenType\",\"name\":\"tokenType\",\"type\":\"uint8\"},{\"internalType\":\"address\",\"name\":\"tokenAddress\",\"type\":\"address\"},{\"internalType\":\"enumLibSessionReceipt.SessionReceiptStatus\",\"name\":\"status\",\"type\":\"uint8\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"internalType\":\"structLibSessionReceipt.SessionReceipt\",\"name\":\"\",\"type\":\"tuple\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"nodesStorage\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"owner\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"client\",\"type\":\"address\"},{\"internalType\":\"uint256\",\"name\":\"nonce\",\"type\":\"uint256\"}],\"name\":\"redeemReceipt\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"renounceOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newOwner\",\"type\":\"address\"}],\"name\":\"transferOwnership\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"usageDepositor\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"\",\"type\":\"address\"}],\"stateMutability\":\"view\",\"type\":\"function\"}]",
 }
 
 // SessionReceiptABI is the input ABI used to generate the binding from.
@@ -189,6 +189,37 @@ func (_SessionReceipt *SessionReceiptTransactorRaw) Transfer(opts *bind.Transact
 // Transact invokes the (paid) contract method with params as input values.
 func (_SessionReceipt *SessionReceiptTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
 	return _SessionReceipt.Contract.contract.Transact(opts, method, params...)
+}
+
+// GetConfirmedNonces is a free data retrieval call binding the contract method 0xc5c4bb51.
+//
+// Solidity: function getConfirmedNonces(address client, address node) view returns(uint256[])
+func (_SessionReceipt *SessionReceiptCaller) GetConfirmedNonces(opts *bind.CallOpts, client common.Address, node common.Address) ([]*big.Int, error) {
+	var out []interface{}
+	err := _SessionReceipt.contract.Call(opts, &out, "getConfirmedNonces", client, node)
+
+	if err != nil {
+		return *new([]*big.Int), err
+	}
+
+	out0 := *abi.ConvertType(out[0], new([]*big.Int)).(*[]*big.Int)
+
+	return out0, err
+
+}
+
+// GetConfirmedNonces is a free data retrieval call binding the contract method 0xc5c4bb51.
+//
+// Solidity: function getConfirmedNonces(address client, address node) view returns(uint256[])
+func (_SessionReceipt *SessionReceiptSession) GetConfirmedNonces(client common.Address, node common.Address) ([]*big.Int, error) {
+	return _SessionReceipt.Contract.GetConfirmedNonces(&_SessionReceipt.CallOpts, client, node)
+}
+
+// GetConfirmedNonces is a free data retrieval call binding the contract method 0xc5c4bb51.
+//
+// Solidity: function getConfirmedNonces(address client, address node) view returns(uint256[])
+func (_SessionReceipt *SessionReceiptCallerSession) GetConfirmedNonces(client common.Address, node common.Address) ([]*big.Int, error) {
+	return _SessionReceipt.Contract.GetConfirmedNonces(&_SessionReceipt.CallOpts, client, node)
 }
 
 // GetLatestReceipt is a free data retrieval call binding the contract method 0xf2f8f940.
@@ -844,12 +875,13 @@ type SessionReceiptSessionReceiptCreated struct {
 	Node               common.Address
 	TotalSecondsServed *big.Int
 	TokenAddress       common.Address
+	Nonce              *big.Int
 	Raw                types.Log // Blockchain specific contextual infos
 }
 
-// FilterSessionReceiptCreated is a free log retrieval operation binding the contract event 0x5b41fa5a246197b0d07600ec73bc1049ffe75eb19383fdd8664b0f37e057c117.
+// FilterSessionReceiptCreated is a free log retrieval operation binding the contract event 0x457553ab13c39b6f49a907120f176df56c556ece5dd4369cc2efb18cdbd5cb67.
 //
-// Solidity: event SessionReceiptCreated(address client, address node, uint256 totalSecondsServed, address tokenAddress)
+// Solidity: event SessionReceiptCreated(address client, address node, uint256 totalSecondsServed, address tokenAddress, uint256 nonce)
 func (_SessionReceipt *SessionReceiptFilterer) FilterSessionReceiptCreated(opts *bind.FilterOpts) (*SessionReceiptSessionReceiptCreatedIterator, error) {
 
 	logs, sub, err := _SessionReceipt.contract.FilterLogs(opts, "SessionReceiptCreated")
@@ -859,9 +891,9 @@ func (_SessionReceipt *SessionReceiptFilterer) FilterSessionReceiptCreated(opts 
 	return &SessionReceiptSessionReceiptCreatedIterator{contract: _SessionReceipt.contract, event: "SessionReceiptCreated", logs: logs, sub: sub}, nil
 }
 
-// WatchSessionReceiptCreated is a free log subscription operation binding the contract event 0x5b41fa5a246197b0d07600ec73bc1049ffe75eb19383fdd8664b0f37e057c117.
+// WatchSessionReceiptCreated is a free log subscription operation binding the contract event 0x457553ab13c39b6f49a907120f176df56c556ece5dd4369cc2efb18cdbd5cb67.
 //
-// Solidity: event SessionReceiptCreated(address client, address node, uint256 totalSecondsServed, address tokenAddress)
+// Solidity: event SessionReceiptCreated(address client, address node, uint256 totalSecondsServed, address tokenAddress, uint256 nonce)
 func (_SessionReceipt *SessionReceiptFilterer) WatchSessionReceiptCreated(opts *bind.WatchOpts, sink chan<- *SessionReceiptSessionReceiptCreated) (event.Subscription, error) {
 
 	logs, sub, err := _SessionReceipt.contract.WatchLogs(opts, "SessionReceiptCreated")
@@ -896,12 +928,148 @@ func (_SessionReceipt *SessionReceiptFilterer) WatchSessionReceiptCreated(opts *
 	}), nil
 }
 
-// ParseSessionReceiptCreated is a log parse operation binding the contract event 0x5b41fa5a246197b0d07600ec73bc1049ffe75eb19383fdd8664b0f37e057c117.
+// ParseSessionReceiptCreated is a log parse operation binding the contract event 0x457553ab13c39b6f49a907120f176df56c556ece5dd4369cc2efb18cdbd5cb67.
 //
-// Solidity: event SessionReceiptCreated(address client, address node, uint256 totalSecondsServed, address tokenAddress)
+// Solidity: event SessionReceiptCreated(address client, address node, uint256 totalSecondsServed, address tokenAddress, uint256 nonce)
 func (_SessionReceipt *SessionReceiptFilterer) ParseSessionReceiptCreated(log types.Log) (*SessionReceiptSessionReceiptCreated, error) {
 	event := new(SessionReceiptSessionReceiptCreated)
 	if err := _SessionReceipt.contract.UnpackLog(event, "SessionReceiptCreated", log); err != nil {
+		return nil, err
+	}
+	event.Raw = log
+	return event, nil
+}
+
+// SessionReceiptSessionReceiptRedeemedIterator is returned from FilterSessionReceiptRedeemed and is used to iterate over the raw logs and unpacked data for SessionReceiptRedeemed events raised by the SessionReceipt contract.
+type SessionReceiptSessionReceiptRedeemedIterator struct {
+	Event *SessionReceiptSessionReceiptRedeemed // Event containing the contract specifics and raw log
+
+	contract *bind.BoundContract // Generic contract to use for unpacking event data
+	event    string              // Event name to use for unpacking event data
+
+	logs chan types.Log        // Log channel receiving the found contract events
+	sub  ethereum.Subscription // Subscription for errors, completion and termination
+	done bool                  // Whether the subscription completed delivering logs
+	fail error                 // Occurred error to stop iteration
+}
+
+// Next advances the iterator to the subsequent event, returning whether there
+// are any more events found. In case of a retrieval or parsing error, false is
+// returned and Error() can be queried for the exact failure.
+func (it *SessionReceiptSessionReceiptRedeemedIterator) Next() bool {
+	// If the iterator failed, stop iterating
+	if it.fail != nil {
+		return false
+	}
+	// If the iterator completed, deliver directly whatever's available
+	if it.done {
+		select {
+		case log := <-it.logs:
+			it.Event = new(SessionReceiptSessionReceiptRedeemed)
+			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+				it.fail = err
+				return false
+			}
+			it.Event.Raw = log
+			return true
+
+		default:
+			return false
+		}
+	}
+	// Iterator still in progress, wait for either a data or an error event
+	select {
+	case log := <-it.logs:
+		it.Event = new(SessionReceiptSessionReceiptRedeemed)
+		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
+			it.fail = err
+			return false
+		}
+		it.Event.Raw = log
+		return true
+
+	case err := <-it.sub.Err():
+		it.done = true
+		it.fail = err
+		return it.Next()
+	}
+}
+
+// Error returns any retrieval or parsing error occurred during filtering.
+func (it *SessionReceiptSessionReceiptRedeemedIterator) Error() error {
+	return it.fail
+}
+
+// Close terminates the iteration process, releasing any pending underlying
+// resources.
+func (it *SessionReceiptSessionReceiptRedeemedIterator) Close() error {
+	it.sub.Unsubscribe()
+	return nil
+}
+
+// SessionReceiptSessionReceiptRedeemed represents a SessionReceiptRedeemed event raised by the SessionReceipt contract.
+type SessionReceiptSessionReceiptRedeemed struct {
+	Client common.Address
+	Node   common.Address
+	Nonce  *big.Int
+	Raw    types.Log // Blockchain specific contextual infos
+}
+
+// FilterSessionReceiptRedeemed is a free log retrieval operation binding the contract event 0x007bbd0c025053252861986bee4856d51d157445d2487d8b77ba5fef953e63f1.
+//
+// Solidity: event SessionReceiptRedeemed(address client, address node, uint256 nonce)
+func (_SessionReceipt *SessionReceiptFilterer) FilterSessionReceiptRedeemed(opts *bind.FilterOpts) (*SessionReceiptSessionReceiptRedeemedIterator, error) {
+
+	logs, sub, err := _SessionReceipt.contract.FilterLogs(opts, "SessionReceiptRedeemed")
+	if err != nil {
+		return nil, err
+	}
+	return &SessionReceiptSessionReceiptRedeemedIterator{contract: _SessionReceipt.contract, event: "SessionReceiptRedeemed", logs: logs, sub: sub}, nil
+}
+
+// WatchSessionReceiptRedeemed is a free log subscription operation binding the contract event 0x007bbd0c025053252861986bee4856d51d157445d2487d8b77ba5fef953e63f1.
+//
+// Solidity: event SessionReceiptRedeemed(address client, address node, uint256 nonce)
+func (_SessionReceipt *SessionReceiptFilterer) WatchSessionReceiptRedeemed(opts *bind.WatchOpts, sink chan<- *SessionReceiptSessionReceiptRedeemed) (event.Subscription, error) {
+
+	logs, sub, err := _SessionReceipt.contract.WatchLogs(opts, "SessionReceiptRedeemed")
+	if err != nil {
+		return nil, err
+	}
+	return event.NewSubscription(func(quit <-chan struct{}) error {
+		defer sub.Unsubscribe()
+		for {
+			select {
+			case log := <-logs:
+				// New log arrived, parse the event and forward to the user
+				event := new(SessionReceiptSessionReceiptRedeemed)
+				if err := _SessionReceipt.contract.UnpackLog(event, "SessionReceiptRedeemed", log); err != nil {
+					return err
+				}
+				event.Raw = log
+
+				select {
+				case sink <- event:
+				case err := <-sub.Err():
+					return err
+				case <-quit:
+					return nil
+				}
+			case err := <-sub.Err():
+				return err
+			case <-quit:
+				return nil
+			}
+		}
+	}), nil
+}
+
+// ParseSessionReceiptRedeemed is a log parse operation binding the contract event 0x007bbd0c025053252861986bee4856d51d157445d2487d8b77ba5fef953e63f1.
+//
+// Solidity: event SessionReceiptRedeemed(address client, address node, uint256 nonce)
+func (_SessionReceipt *SessionReceiptFilterer) ParseSessionReceiptRedeemed(log types.Log) (*SessionReceiptSessionReceiptRedeemed, error) {
+	event := new(SessionReceiptSessionReceiptRedeemed)
+	if err := _SessionReceipt.contract.UnpackLog(event, "SessionReceiptRedeemed", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log

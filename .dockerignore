@@ -1,0 +1,13 @@
+.qodo
+vendor
+.env
+test
+event-pool
+.idea
+.vscode
+
+data/**
+!data/temp/
+!data/temp/**
+data/temp/blockchain
+data/temp/trie

@@ -247,7 +247,10 @@ func (s *Server) RequestToken(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	json.NewEncoder(w).Encode(map[string]any{
+		"token":      token,
+		"expires_at": time.Now().Add(time.Duration(body.Duration) * time.Second).Unix(),
+	})
 	return
 }
 

@@ -1,12 +1,5 @@
 #!/bin/sh
 
-# Wait for PostgreSQL to be ready
-echo "Waiting for PostgreSQL to be ready..."
-while ! nc -z postgres 5432; do
-  sleep 0.1
-done
-echo "PostgreSQL is ready!"
-
 # Ensure we're in the correct directory
 cd /app
 
@@ -19,4 +12,4 @@ go run github.com/steebchen/prisma-client-go migrate deploy
 
 # Start the application
 echo "Starting the application..."
-./event-pool serve 
+./event-pool serve

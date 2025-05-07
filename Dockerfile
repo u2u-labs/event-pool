@@ -1,40 +1,43 @@
+# === Builder Stage ===
 FROM golang:1.23-alpine AS builder
-RUN apk update && apk add build-base cmake gcc git
+
+RUN apk update && apk add --no-cache build-base cmake git
+
 WORKDIR /app
 
-# Copy only the files needed for dependency resolution first
+# Copy only necessary files for go mod
 COPY go.mod go.sum ./
 COPY prisma ./prisma/
 COPY pkg ./pkg/
 COPY internal ./internal/
 
-# Initialize Go module and install dependencies
+# Download dependencies and generate Prisma client
 RUN go mod download
-RUN go get github.com/steebchen/prisma-client-go
+RUN go install github.com/steebchen/prisma-client-go@latest
 RUN go run github.com/steebchen/prisma-client-go generate
 
-# Now copy the rest of the application
+# Copy rest of the source
 COPY . .
 
-# Update dependencies
+# Tidy up and build
 RUN go mod tidy
+RUN go build -ldflags="-w -s" -o event-pool
 
-# Build the application
-RUN go build -ldflags -w -o event-pool
+# === Final Stage ===
+FROM alpine:latest
 
-FROM golang:1.23-alpine
-RUN apk add ca-certificates curl
+# Install only required runtime tools
+RUN apk --no-cache add ca-certificates
+
 WORKDIR /app
 
-# Copy the entire application from builder
-COPY --from=builder /app /app
+# Copy binary and entrypoint
+COPY --from=builder /app/event-pool /app/event-pool
+COPY --from=builder /app/docker-entrypoint.sh /app/docker-entrypoint.sh
+COPY --from=builder /app/prisma /app/prisma
+COPY --from=builder /app/pkg /app/pkg
+COPY --from=builder /app/data /app/data
 
-# Install Prisma CLI in the final image
-RUN go get github.com/steebchen/prisma-client-go
-
-# Set the entrypoint to run migrations and then start the application
-COPY docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
-
