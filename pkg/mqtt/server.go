@@ -93,17 +93,34 @@ func (s *Server) UnregisterTopic(chainID int, contract, event string) {
 // BroadcastEvent publishes an event to the MQTT broker
 func (s *Server) BroadcastEvent(chainID int, contract, event string, data interface{}) error {
 	topic := fmt.Sprintf("events/%d/%s/%s", chainID, contract, event)
+	log.Printf("Attempting to publish to topic: %s", topic)
+
+	if !s.client.IsConnected() {
+		log.Printf("MQTT client is not connected, attempting to reconnect...")
+		if token := s.client.Connect(); token.Wait() && token.Error() != nil {
+			return fmt.Errorf("failed to reconnect to MQTT broker: %w", token.Error())
+		}
+		log.Printf("Successfully reconnected to MQTT broker")
+	}
 
 	message, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("failed to marshal event data: %w", err)
 	}
+	log.Printf("Message payload size: %d bytes", len(message))
 
 	token := s.client.Publish(topic, s.config.QoS, false, message)
-	if token.Wait() && token.Error() != nil {
+	log.Printf("Publish token created, waiting for completion...")
+
+	if !token.Wait() {
+		log.Printf("Publish operation timed out for topic: %s", topic)
+		return fmt.Errorf("failed to wait for publish to topic %s: operation timed out", topic)
+	}
+	if token.Error() != nil {
+		log.Printf("Publish operation failed for topic %s: %v", topic, token.Error())
 		return fmt.Errorf("failed to publish message to topic %s: %w", topic, token.Error())
 	}
 
-	log.Printf("Published event to topic: %s", topic)
+	log.Printf("Successfully published event to topic: %s", topic)
 	return nil
 }
