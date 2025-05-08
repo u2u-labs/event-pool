@@ -568,7 +568,8 @@ func (m *Monitor) SendTx(ctx context.Context, filter types.FilterLogsParams) err
 
 	// send post request to the server
 	resp, err := http.Post(
-		fmt.Sprintf("http://localhost%s/txpool/add",
+		fmt.Sprintf("http://%s%s/txpool/add",
+			viper.GetString("JSONRPC_HOST"),
 			viper.GetString("jsonrpc_addr")),
 		"application/json",
 		bytes.NewBuffer(payload),

@@ -168,7 +168,8 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 
 		// send post request to the server
 		resp, err := http.Post(
-			fmt.Sprintf("http://localhost%s/txpool/contract/register",
+			fmt.Sprintf("http://%s%s/txpool/contract/register",
+				viper.GetString("JSONRPC_HOST"),
 				viper.GetString("jsonrpc_addr")),
 			"application/json",
 			bytes.NewBuffer(gossipedPayload),

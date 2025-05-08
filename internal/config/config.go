@@ -77,6 +77,7 @@ func Load() (*Config, error) {
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "__"))
+	viper.SetDefault("JSONRPC_HOST", "localhost")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
