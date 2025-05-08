@@ -60,6 +60,9 @@ func (p *serverParams) applyEnvironmentOverrides() {
 			p.rawConfig.NodeChain.Bootnodes = append(p.rawConfig.NodeChain.Bootnodes, bootnodes...)
 		}
 	}
+	if monitorHostsEnv := os.Getenv("MONITOR_HOST"); monitorHostsEnv != "" {
+		p.rawConfig.MonitorConfig.Host = monitorHostsEnv
+	}
 }
 
 func parseBootnodesEnv(bootnodesEnv string) []string {
