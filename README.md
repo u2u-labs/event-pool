@@ -31,11 +31,17 @@ Event Pool is a service that listens to specific smart contract events on suppor
 - Redis 6 or later
 - Access to Ethereum node RPC endpoints
 
+## System Requirements
+
+| RAM  | CPU     | Storage |
+|------|---------|---------|
+| 8 GB | 6 Cores | 100 GB  |
+
 ## Installation
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/event-pool.git
+git clone https://github.com/u2u-labs/event-pool.git
 cd event-pool
 ```
 
