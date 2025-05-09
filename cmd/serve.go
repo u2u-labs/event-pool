@@ -60,7 +60,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 
 	jwtSecret, err := os.ReadFile(cfg.JwtSecretPath)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read JWT secret: %w", err)
 	}
 
