@@ -49,11 +49,7 @@ node_chain:
     max_account_enqueued: 10000
     max_slots: 10000
     whitelists:
-      deployment: [
-        "0x21e185f9bAD13646205Db4BA6Eb9cCB885e447A1",
-        "0x2743eEC46576f76f47334569074242F3D9a90B44",
-        "0x01857E2BCFcb8B4eF76Df6590F8dCd3bf736C9E9",
-      ]
+      deployment: []
     forks:
       homestead: 0
       byzantium: 0
@@ -79,3 +75,4 @@ log_level: info
 
 chain_id: 2484
 session_receipt_address: 0x0440619edb00d5B046D9CaA5b894D5960fD66B41
+jwt_secret_path: ./jwt_secret.key

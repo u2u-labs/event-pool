@@ -11,3 +11,5 @@ data/**
 !data/temp/**
 data/temp/blockchain
 data/temp/trie
+
+jwt_secret.key

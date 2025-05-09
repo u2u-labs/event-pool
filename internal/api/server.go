@@ -90,6 +90,13 @@ func (s *Server) Start() error {
 	}
 	s.logger.Infof("Monitor started successfully")
 
+	go func() {
+		if err := s.grpcServer.Start(s.config.GrpcServer.Port); err != nil {
+			s.logger.Errorf("Failed to start grpc server: %v", err)
+		}
+	}()
+	s.logger.Infof("gRPC server started successfully on port %d", s.config.GrpcServer.Port)
+
 	// Create handlers
 	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
 
@@ -172,7 +179,7 @@ func (s *Server) Start() error {
 		})
 	})
 
-	http.HandleFunc("/api/v1/token", s.grpcServer.RequestToken)
+	http.HandleFunc("/api/v1/token", s.grpcServer.RequestTokenHandler)
 	http.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
 	http.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

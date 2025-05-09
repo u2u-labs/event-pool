@@ -1,11 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	"event-pool/internal/api"
 	"event-pool/internal/config"
@@ -14,6 +17,7 @@ import (
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
@@ -40,6 +44,26 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 	logger := zLogger.Sugar()
 
+	// Initialize redis
+	client := redis.NewClient(&redis.Options{
+		Addr:     cfg.Redis.Addr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Test connection
+	if _, err = client.Ping(ctx).Result(); err != nil {
+		return err
+	}
+
+	jwtSecret, err := os.ReadFile(cfg.JwtSecretPath)
+	if err != nil {
+		return fmt.Errorf("failed to read JWT secret: %w", err)
+	}
+
 	// Initialize database
 	dbClient, err := db.NewClient()
 	if err != nil {
@@ -58,7 +82,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize gRPC server
-	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, cfg.SessionContract, ethClients[cfg.ChainId], logger.Named("server"))
+	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, strings.TrimSpace(string(jwtSecret)), cfg.SessionContract, ethClients[cfg.ChainId], client, logger.Named("server"))
 
 	// Initialize monitor
 	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer, logger.Named("monitor"))

@@ -28,13 +28,24 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 
 	"google.golang.org/grpc"
 )
 
-const LOGIN_MESSAGE = "logmein"
+const ReceiptSubmissionDelay = 5 * time.Minute
+
+var (
+	skippedMethods = map[string]bool{
+		"/eventpool.EventService/RequestToken": true,
+		// Add other RPC method names you want to skip JWT check
+	}
+)
 
 type Server struct {
 	pb.UnimplementedEventServiceServer
@@ -43,30 +54,47 @@ type Server struct {
 	activeConns     map[string]*activeConnection // Added to track active connections
 	grpcServer      *grpc.Server
 	db              *db.PrismaClient
-	secretKey       []byte
+	gatewaySecret   []byte
+	jwtSecret       []byte
 	sessionContract string
 	client          *ethereum.Client
+	rdb             *redis.Client
+	scheduler       *SessionScheduler
 	logger          *zap.SugaredLogger
 }
 
 // activeConnection tracks both the channel and the websocket connection
 type activeConnection struct {
-	conn   *websocket.Conn
-	cancel context.CancelFunc
-	logger *zap.SugaredLogger
+	conn       *websocket.Conn
+	grpcStream pb.EventService_StreamEventsServer
+	cancel     context.CancelFunc
+	logger     *zap.SugaredLogger
 }
 
-func NewServer(db *db.PrismaClient, secretKey string, sessionContract string, client *ethereum.Client, logger *zap.SugaredLogger) *Server {
-	return &Server{
+func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, sessionContract string, client *ethereum.Client, rdb *redis.Client, logger *zap.SugaredLogger) *Server {
+	s := &Server{
 		subscribers:     make(map[string][]chan *pb.Event),
-		grpcServer:      grpc.NewServer(),
 		activeConns:     make(map[string]*activeConnection),
 		db:              db,
-		secretKey:       []byte(secretKey),
+		gatewaySecret:   []byte(gatewaySecretKey),
+		jwtSecret:       []byte(jwtSecret),
 		sessionContract: sessionContract,
 		client:          client,
+		rdb:             rdb,
 		logger:          logger,
 	}
+
+	grpcServer := grpc.NewServer(
+		grpc.UnaryInterceptor(s.jwtUnaryInterceptor(skippedMethods)),
+		grpc.StreamInterceptor(s.jwtStreamInterceptor(skippedMethods)),
+	)
+	s.grpcServer = grpcServer
+
+	s.scheduler = NewSessionScheduler(func(claims interface{}) {
+		s.submitSessionReceipt(claims.(*JwtClaims))
+	})
+
+	return s
 }
 
 func (s *Server) Start(port int) error {
@@ -80,19 +108,69 @@ func (s *Server) Start(port int) error {
 }
 
 func (s *Server) Stop() {
+	s.scheduler.Stop()
 	s.grpcServer.Stop()
+	s.logger.Info("gRPC server stopped")
+}
+
+func (s *Server) RequestToken(ctx context.Context, req *pb.RequestTokenRequest) (*pb.RequestTokenResponse, error) {
+	token, err := s.GenerateJWT(req.Address, req.Duration)
+	if err != nil {
+		s.logger.Errorw(fmt.Sprintf("Unable to generate JWT, %s", err.Error()))
+		return nil, status.Errorf(codes.Internal, "failed to generate JWT: %v", err)
+	}
+
+	return &pb.RequestTokenResponse{
+		Token:     token,
+		ExpiresAt: time.Now().Add(time.Duration(req.Duration) * time.Second).Unix(),
+	}, nil
 }
 
 func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventService_StreamEventsServer) error {
+	// Validate token from metadata
+	md, ok := metadata.FromIncomingContext(stream.Context())
+	if !ok {
+		return status.Error(codes.Unauthenticated, "missing metadata")
+	}
+
+	tokens := md.Get("authorization")
+	if len(tokens) == 0 {
+		return status.Error(codes.Unauthenticated, "missing token")
+	}
+
+	claims, err := s.ValidateJWT(tokens[0])
+	if err != nil {
+		return status.Error(codes.Unauthenticated, "invalid token")
+	}
+	token := strings.TrimPrefix(tokens[0], "Bearer ")
+
+	// Format the key the same way as in WebSocket handler
 	key := fmt.Sprintf("%d/%s/%s", req.ChainId, req.ContractAddress, req.EventSignature)
+
+	// Create a context with cancel for this connection
+	ctx, cancel := context.WithCancel(stream.Context())
 
 	// Create a channel for this subscriber
 	eventChan := make(chan *pb.Event, 100)
 
-	// Register the subscriber
+	// Register the subscriber and track the connection
 	s.mu.Lock()
+	// Close any existing connection with the same token
+	oldConn, exist := s.activeConns[token]
+	if exist {
+		oldConn.Close()
+	}
+
 	s.subscribers[key] = append(s.subscribers[key], eventChan)
+	s.activeConns[token] = &activeConnection{
+		grpcStream: stream,
+		cancel:     cancel,
+		logger:     s.logger.Named("grpc"),
+	}
 	s.mu.Unlock()
+
+	// Schedule a job to submit session receipt after disconnect
+	s.scheduler.ScheduleSessionReceipt(token, claims, ReceiptSubmissionDelay)
 
 	// Cleanup when the stream ends
 	defer func() {
@@ -105,18 +183,41 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 			}
 		}
 		s.subscribers[key] = subs
+		if conn, exists := s.activeConns[token]; exists && conn.grpcStream == stream {
+			delete(s.activeConns, token)
+		}
 		s.mu.Unlock()
 		close(eventChan)
+		cancel()
 	}()
+
+	// Send initial connection confirmation
+	initMetadata := metadata.New(map[string]string{"status": "Connected"})
+	if err := stream.SendHeader(initMetadata); err != nil {
+		return fmt.Errorf("failed to send header: %v", err)
+	}
+
+	// Check for token expiration
+	expiry, err := claims.GetExpirationTime()
+	if err != nil {
+		return fmt.Errorf("unable to get expiration time: %v", err)
+	}
+	timer := time.NewTimer(time.Until(expiry.Time))
 
 	// Stream events to the client
 	for {
 		select {
-		case <-stream.Context().Done():
+		case <-timer.C:
+			s.logger.Infoln("Connection expired")
+			go s.submitSessionReceipt(claims)
+			return nil
+		case <-ctx.Done():
+			s.logger.Infoln("gRPC stream terminated by server")
 			return nil
 		case event := <-eventChan:
 			if err := stream.Send(event); err != nil {
-				return fmt.Errorf("failed to send event: %v", err)
+				s.logger.Infoln(fmt.Sprintf("Unable to send event: %s", err.Error()))
+				return err
 			}
 		}
 	}
@@ -218,13 +319,147 @@ func (s *Server) GetEvents(ctx context.Context, req *pb.GetEventsRequest) (*pb.G
 	return response, nil
 }
 
-func (s *Server) RequestToken(w http.ResponseWriter, r *http.Request) {
+func (s *Server) DisconnectStream(ctx context.Context, req *pb.DisconnectStreamRequest) (*pb.DisconnectStreamResponse, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Error(codes.Unauthenticated, "missing metadata")
+	}
+
+	tokens := md.Get("authorization")
+	if len(tokens) == 0 {
+		return nil, status.Error(codes.Unauthenticated, "missing token")
+	}
+
+	claims, err := s.ValidateJWT(tokens[0])
+	if err != nil {
+		return &pb.DisconnectStreamResponse{
+			Success: false,
+			Error:   "Invalid token",
+		}, status.Error(codes.Unauthenticated, "Invalid token")
+	}
+	token := strings.TrimPrefix(tokens[0], "Bearer ")
+
+	// Check if the connection exists
+	s.mu.Lock()
+	activeConn, exists := s.activeConns[token]
+	s.mu.Unlock()
+
+	if !exists {
+		return &pb.DisconnectStreamResponse{
+			Success: false,
+			Error:   "Connection not found",
+		}, status.Error(codes.NotFound, "Connection not found")
+	}
+
+	// Cancel the scheduled receipt submission job for this token
+	s.scheduler.CancelSessionReceipt(token)
+
+	// Trigger graceful disconnection
+	activeConn.cancel()
+
+	// Handle both gRPC and WS connection types
+	if activeConn.conn != nil {
+		// Send close frame to WebSocket client
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by server")
+		if err := activeConn.conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
+			s.logger.Infoln(fmt.Sprintf("Error sending close message: %s", err.Error()))
+		}
+
+		// Close the WebSocket connection
+		if err := activeConn.conn.Close(); err != nil {
+			s.logger.Infoln(fmt.Sprintf("Error closing connection: %s", err.Error()))
+		}
+	}
+
+	// Remove the connection from active connections
+	s.mu.Lock()
+	delete(s.activeConns, token)
+	s.mu.Unlock()
+
+	// Add token to blacklist with expiration time based on the token's expiry
+	_ = s.rdb.Set(ctx, token, "true", claims.ExpiresAt.Sub(time.Now())).Err()
+
+	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
+
+	// Submit session receipt asynchronously
+	go s.submitSessionReceipt(claims)
+
+	// Return success response
+	return &pb.DisconnectStreamResponse{
+		Success: true,
+		Message: "Stream disconnected successfully",
+	}, nil
+}
+
+func (s *Server) jwtUnaryInterceptor(skippedMethods map[string]bool) grpc.UnaryServerInterceptor {
+	return func(
+		ctx context.Context,
+		req interface{},
+		info *grpc.UnaryServerInfo,
+		handler grpc.UnaryHandler,
+	) (interface{}, error) {
+		if skippedMethods[info.FullMethod] {
+			return handler(ctx, req)
+		}
+
+		// Extract JWT token from metadata
+		md, ok := metadata.FromIncomingContext(ctx)
+		if !ok {
+			return nil, status.Error(codes.Unauthenticated, "Missing metadata")
+		}
+
+		tokens := md["authorization"]
+		if len(tokens) == 0 {
+			return nil, status.Error(codes.Unauthenticated, "Invalid or missing token")
+		}
+		claims, err := s.ValidateJWT(tokens[0])
+		if err != nil {
+			return nil, status.Error(codes.Unauthenticated, "Invalid token")
+		}
+
+		s.logger.Infow("Request received", "addr", claims.Address, "method", info.FullMethod)
+		return handler(ctx, req)
+	}
+}
+
+func (s *Server) jwtStreamInterceptor(skippedMethods map[string]bool) grpc.StreamServerInterceptor {
+	return func(
+		srv interface{},
+		ss grpc.ServerStream,
+		info *grpc.StreamServerInfo,
+		handler grpc.StreamHandler,
+	) error {
+		if skippedMethods[info.FullMethod] {
+			return handler(srv, ss)
+		}
+
+		md, ok := metadata.FromIncomingContext(ss.Context())
+		if !ok {
+			return status.Error(codes.Unauthenticated, "Missing metadata")
+		}
+
+		tokens := md["authorization"]
+		if len(tokens) == 0 {
+			return status.Error(codes.Unauthenticated, "Invalid or missing token")
+		}
+		// split the token into parts
+		claims, err := s.ValidateJWT(tokens[0])
+		if err != nil {
+			return status.Error(codes.Unauthenticated, "Invalid token")
+		}
+
+		s.logger.Infow("Stream connected", "addr", claims.Address, "method", info.FullMethod)
+		return handler(srv, ss)
+	}
+}
+
+func (s *Server) RequestTokenHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	secret := r.Header.Get("X-Secret")
-	if s.secretKey != nil && secret != string(s.secretKey) {
+	if s.gatewaySecret != nil && secret != string(s.gatewaySecret) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -265,6 +500,13 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
+	token := req.URL.Query().Get("token")
+	claims, err := s.ValidateJWT(token)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
 	// CORS rule - Allow requests from anywhere
 	wsUpgrader.CheckOrigin = func(r *http.Request) bool { return true }
 
@@ -279,12 +521,6 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 	chainId := req.URL.Query().Get("chain_id")
 	contractAddress := req.URL.Query().Get("contract_address")
 	eventName := req.URL.Query().Get("event_name")
-	token := req.URL.Query().Get("token")
-	claims, err := s.ValidateJWT(token)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
 	key := fmt.Sprintf("%s/%s/%s", chainId, contractAddress, eventName)
 
 	// Create a context with cancel for this connection
@@ -307,6 +543,10 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 		logger: s.logger.Named("ws"),
 	}
 	s.mu.Unlock()
+
+	// Schedule a job to submit session receipt after disconnect
+	// This will run if the client disconnects unexpectedly
+	s.scheduler.ScheduleSessionReceipt(token, claims, ReceiptSubmissionDelay)
 
 	// Cleanup when the stream ends
 	defer func() {
@@ -446,6 +686,9 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Connection not found", http.StatusNotFound)
 		return
 	}
+
+	// Cancel the scheduled receipt submission job for this token
+	s.scheduler.CancelSessionReceipt(token)
 	// Trigger graceful disconnection
 	activeConn.cancel()
 
@@ -460,6 +703,9 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 		s.logger.Infoln(fmt.Sprintf("Error closing connection: %s", err.Error()))
 	}
 	delete(s.activeConns, token)
+
+	// add token to blacklist
+	_ = s.rdb.Set(context.Background(), token, "true", claims.ExpiresAt.Sub(time.Now())).Err()
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"disconnected"}`))
@@ -567,13 +813,17 @@ func (s *Server) GenerateJWT(address string, expiry int64) (string, error) {
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.secretKey)
+	return token.SignedString(s.jwtSecret)
 }
 
 // ValidateJWT parses and verifies a JWT token
 func (s *Server) ValidateJWT(tokenStr string) (*JwtClaims, error) {
+	if strings.HasPrefix(tokenStr, "Bearer ") {
+		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
+	}
+
 	token, err := jwt.ParseWithClaims(tokenStr, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return s.secretKey, nil
+		return s.jwtSecret, nil
 	})
 
 	if err != nil {
@@ -581,6 +831,9 @@ func (s *Server) ValidateJWT(tokenStr string) (*JwtClaims, error) {
 	}
 
 	if claims, ok := token.Claims.(*JwtClaims); ok && token.Valid {
+		if err := s.rdb.Get(context.Background(), tokenStr).Err(); err == nil {
+			return nil, fmt.Errorf("token is invalid")
+		}
 		return claims, nil
 	}
 
@@ -606,18 +859,54 @@ func VerifySignature(fromAddress, message, signatureHex string) bool {
 }
 
 func (a *activeConnection) Close() error {
-	// Trigger graceful disconnection
-	a.cancel()
+	var wsErr, grpcErr error
 
-	// Send close frame to client
-	closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by server")
-	if err := a.conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
-		a.logger.Infoln(fmt.Sprintf("Error sending close message: %s", err.Error()))
+	// Always trigger context cancellation
+	if a.cancel != nil {
+		a.cancel()
 	}
 
-	// Close the connection
-	if err := a.conn.Close(); err != nil {
-		a.logger.Infoln(fmt.Sprintf("Error closing connection: %s", err.Error()))
+	// Handle WebSocket connection if it exists
+	if a.conn != nil {
+		// Send close frame to WebSocket client
+		closeMsg := websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Disconnected by server")
+		if err := a.conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
+			a.logger.Infoln(fmt.Sprintf("Error sending close message: %s", err.Error()))
+			wsErr = err
+		}
+
+		// Close the WebSocket connection
+		if err := a.conn.Close(); err != nil {
+			a.logger.Infoln(fmt.Sprintf("Error closing WebSocket connection: %s", err.Error()))
+			if wsErr == nil {
+				wsErr = err
+			}
+		}
+	}
+
+	// Handle gRPC stream if it exists
+	if a.grpcStream != nil {
+		// For gRPC, we don't need to explicitly close the stream as it will
+		// be closed when the context is cancelled. However, we can try to send
+		// a final metadata to indicate closure if needed.
+		if stream, ok := a.grpcStream.(interface {
+			SendHeader(metadata.MD) error
+		}); ok {
+			md := metadata.Pairs("status", "disconnected")
+			if err := stream.SendHeader(md); err != nil {
+				a.logger.Infoln(fmt.Sprintf("Error sending final metadata to gRPC stream: %s", err.Error()))
+				grpcErr = err
+			}
+		}
+		// The actual closing of the gRPC stream is handled by the context cancellation
+	}
+
+	// Return an error if either WebSocket or gRPC closure had an issue
+	if wsErr != nil {
+		return wsErr
+	}
+	if grpcErr != nil {
+		return grpcErr
 	}
 
 	return nil

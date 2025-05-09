@@ -21,6 +21,112 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// RequestTokenRequest contains the parameters for requesting a token
+type RequestTokenRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Address       string                 `protobuf:"bytes,1,opt,name=address,proto3" json:"address,omitempty"`
+	Duration      int64                  `protobuf:"varint,2,opt,name=duration,proto3" json:"duration,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestTokenRequest) Reset() {
+	*x = RequestTokenRequest{}
+	mi := &file_internal_proto_event_proto_msgTypes[0]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestTokenRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestTokenRequest) ProtoMessage() {}
+
+func (x *RequestTokenRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_event_proto_msgTypes[0]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestTokenRequest.ProtoReflect.Descriptor instead.
+func (*RequestTokenRequest) Descriptor() ([]byte, []int) {
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{0}
+}
+
+func (x *RequestTokenRequest) GetAddress() string {
+	if x != nil {
+		return x.Address
+	}
+	return ""
+}
+
+func (x *RequestTokenRequest) GetDuration() int64 {
+	if x != nil {
+		return x.Duration
+	}
+	return 0
+}
+
+// RequestTokenResponse contains the response for requesting a token
+type RequestTokenResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Token         string                 `protobuf:"bytes,1,opt,name=token,proto3" json:"token,omitempty"`
+	ExpiresAt     int64                  `protobuf:"varint,2,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestTokenResponse) Reset() {
+	*x = RequestTokenResponse{}
+	mi := &file_internal_proto_event_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestTokenResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestTokenResponse) ProtoMessage() {}
+
+func (x *RequestTokenResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_event_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestTokenResponse.ProtoReflect.Descriptor instead.
+func (*RequestTokenResponse) Descriptor() ([]byte, []int) {
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *RequestTokenResponse) GetToken() string {
+	if x != nil {
+		return x.Token
+	}
+	return ""
+}
+
+func (x *RequestTokenResponse) GetExpiresAt() int64 {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return 0
+}
+
 // StreamEventsRequest contains the parameters for subscribing to events
 type StreamEventsRequest struct {
 	state           protoimpl.MessageState `protogen:"open.v1"`
@@ -33,7 +139,7 @@ type StreamEventsRequest struct {
 
 func (x *StreamEventsRequest) Reset() {
 	*x = StreamEventsRequest{}
-	mi := &file_internal_proto_event_proto_msgTypes[0]
+	mi := &file_internal_proto_event_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -45,7 +151,7 @@ func (x *StreamEventsRequest) String() string {
 func (*StreamEventsRequest) ProtoMessage() {}
 
 func (x *StreamEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_event_proto_msgTypes[0]
+	mi := &file_internal_proto_event_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -58,7 +164,7 @@ func (x *StreamEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamEventsRequest.ProtoReflect.Descriptor instead.
 func (*StreamEventsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_event_proto_rawDescGZIP(), []int{0}
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *StreamEventsRequest) GetChainId() int32 {
@@ -96,7 +202,7 @@ type GetEventsRequest struct {
 
 func (x *GetEventsRequest) Reset() {
 	*x = GetEventsRequest{}
-	mi := &file_internal_proto_event_proto_msgTypes[1]
+	mi := &file_internal_proto_event_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -108,7 +214,7 @@ func (x *GetEventsRequest) String() string {
 func (*GetEventsRequest) ProtoMessage() {}
 
 func (x *GetEventsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_event_proto_msgTypes[1]
+	mi := &file_internal_proto_event_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -121,7 +227,7 @@ func (x *GetEventsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventsRequest.ProtoReflect.Descriptor instead.
 func (*GetEventsRequest) Descriptor() ([]byte, []int) {
-	return file_internal_proto_event_proto_rawDescGZIP(), []int{1}
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GetEventsRequest) GetChainId() int32 {
@@ -170,7 +276,7 @@ type GetEventsResponse struct {
 
 func (x *GetEventsResponse) Reset() {
 	*x = GetEventsResponse{}
-	mi := &file_internal_proto_event_proto_msgTypes[2]
+	mi := &file_internal_proto_event_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -182,7 +288,7 @@ func (x *GetEventsResponse) String() string {
 func (*GetEventsResponse) ProtoMessage() {}
 
 func (x *GetEventsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_event_proto_msgTypes[2]
+	mi := &file_internal_proto_event_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -195,7 +301,7 @@ func (x *GetEventsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetEventsResponse.ProtoReflect.Descriptor instead.
 func (*GetEventsResponse) Descriptor() ([]byte, []int) {
-	return file_internal_proto_event_proto_rawDescGZIP(), []int{2}
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GetEventsResponse) GetData() []*EventData {
@@ -228,7 +334,7 @@ type EventData struct {
 
 func (x *EventData) Reset() {
 	*x = EventData{}
-	mi := &file_internal_proto_event_proto_msgTypes[3]
+	mi := &file_internal_proto_event_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -240,7 +346,7 @@ func (x *EventData) String() string {
 func (*EventData) ProtoMessage() {}
 
 func (x *EventData) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_event_proto_msgTypes[3]
+	mi := &file_internal_proto_event_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -253,7 +359,7 @@ func (x *EventData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EventData.ProtoReflect.Descriptor instead.
 func (*EventData) Descriptor() ([]byte, []int) {
-	return file_internal_proto_event_proto_rawDescGZIP(), []int{3}
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *EventData) GetId() string {
@@ -316,7 +422,7 @@ type Pagination struct {
 
 func (x *Pagination) Reset() {
 	*x = Pagination{}
-	mi := &file_internal_proto_event_proto_msgTypes[4]
+	mi := &file_internal_proto_event_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -328,7 +434,7 @@ func (x *Pagination) String() string {
 func (*Pagination) ProtoMessage() {}
 
 func (x *Pagination) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_event_proto_msgTypes[4]
+	mi := &file_internal_proto_event_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -341,7 +447,7 @@ func (x *Pagination) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Pagination.ProtoReflect.Descriptor instead.
 func (*Pagination) Descriptor() ([]byte, []int) {
-	return file_internal_proto_event_proto_rawDescGZIP(), []int{4}
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *Pagination) GetSkip() int32 {
@@ -370,7 +476,7 @@ type Event struct {
 
 func (x *Event) Reset() {
 	*x = Event{}
-	mi := &file_internal_proto_event_proto_msgTypes[5]
+	mi := &file_internal_proto_event_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -382,7 +488,7 @@ func (x *Event) String() string {
 func (*Event) ProtoMessage() {}
 
 func (x *Event) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_proto_event_proto_msgTypes[5]
+	mi := &file_internal_proto_event_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -395,7 +501,7 @@ func (x *Event) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Event.ProtoReflect.Descriptor instead.
 func (*Event) Descriptor() ([]byte, []int) {
-	return file_internal_proto_event_proto_rawDescGZIP(), []int{5}
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *Event) GetBlockNumber() int64 {
@@ -419,11 +525,116 @@ func (x *Event) GetData() string {
 	return ""
 }
 
+// DisconnectStreamRequest contains the parameters for disconnecting a stream
+type DisconnectStreamRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisconnectStreamRequest) Reset() {
+	*x = DisconnectStreamRequest{}
+	mi := &file_internal_proto_event_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisconnectStreamRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisconnectStreamRequest) ProtoMessage() {}
+
+func (x *DisconnectStreamRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_event_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisconnectStreamRequest.ProtoReflect.Descriptor instead.
+func (*DisconnectStreamRequest) Descriptor() ([]byte, []int) {
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{8}
+}
+
+// DisconnectStreamResponse contains the response for disconnecting a stream
+type DisconnectStreamResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
+	Message       string                 `protobuf:"bytes,2,opt,name=message,proto3" json:"message,omitempty"`
+	Error         string                 `protobuf:"bytes,3,opt,name=error,proto3" json:"error,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DisconnectStreamResponse) Reset() {
+	*x = DisconnectStreamResponse{}
+	mi := &file_internal_proto_event_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DisconnectStreamResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DisconnectStreamResponse) ProtoMessage() {}
+
+func (x *DisconnectStreamResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_proto_event_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DisconnectStreamResponse.ProtoReflect.Descriptor instead.
+func (*DisconnectStreamResponse) Descriptor() ([]byte, []int) {
+	return file_internal_proto_event_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *DisconnectStreamResponse) GetSuccess() bool {
+	if x != nil {
+		return x.Success
+	}
+	return false
+}
+
+func (x *DisconnectStreamResponse) GetMessage() string {
+	if x != nil {
+		return x.Message
+	}
+	return ""
+}
+
+func (x *DisconnectStreamResponse) GetError() string {
+	if x != nil {
+		return x.Error
+	}
+	return ""
+}
+
 var File_internal_proto_event_proto protoreflect.FileDescriptor
 
 const file_internal_proto_event_proto_rawDesc = "" +
 	"\n" +
-	"\x1ainternal/proto/event.proto\x12\teventpool\"\x84\x01\n" +
+	"\x1ainternal/proto/event.proto\x12\teventpool\"K\n" +
+	"\x13RequestTokenRequest\x12\x18\n" +
+	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x1a\n" +
+	"\bduration\x18\x02 \x01(\x03R\bduration\"K\n" +
+	"\x14RequestTokenResponse\x12\x14\n" +
+	"\x05token\x18\x01 \x01(\tR\x05token\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x02 \x01(\x03R\texpiresAt\"\x84\x01\n" +
 	"\x13StreamEventsRequest\x12\x19\n" +
 	"\bchain_id\x18\x01 \x01(\x05R\achainId\x12)\n" +
 	"\x10contract_address\x18\x02 \x01(\tR\x0fcontractAddress\x12'\n" +
@@ -455,10 +666,17 @@ const file_internal_proto_event_proto_rawDesc = "" +
 	"\x05Event\x12!\n" +
 	"\fblock_number\x18\x01 \x01(\x03R\vblockNumber\x12\x17\n" +
 	"\atx_hash\x18\x02 \x01(\tR\x06txHash\x12\x12\n" +
-	"\x04data\x18\x03 \x01(\tR\x04data2\x9e\x01\n" +
-	"\fEventService\x12D\n" +
+	"\x04data\x18\x03 \x01(\tR\x04data\"\x19\n" +
+	"\x17DisconnectStreamRequest\"d\n" +
+	"\x18DisconnectStreamResponse\x12\x18\n" +
+	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage\x12\x14\n" +
+	"\x05error\x18\x03 \x01(\tR\x05error2\xd0\x02\n" +
+	"\fEventService\x12Q\n" +
+	"\fRequestToken\x12\x1e.eventpool.RequestTokenRequest\x1a\x1f.eventpool.RequestTokenResponse\"\x00\x12D\n" +
 	"\fStreamEvents\x12\x1e.eventpool.StreamEventsRequest\x1a\x10.eventpool.Event\"\x000\x01\x12H\n" +
-	"\tGetEvents\x12\x1b.eventpool.GetEventsRequest\x1a\x1c.eventpool.GetEventsResponse\"\x00B\x12Z\x10event-pool/protob\x06proto3"
+	"\tGetEvents\x12\x1b.eventpool.GetEventsRequest\x1a\x1c.eventpool.GetEventsResponse\"\x00\x12]\n" +
+	"\x10DisconnectStream\x12\".eventpool.DisconnectStreamRequest\x1a#.eventpool.DisconnectStreamResponse\"\x00B\x12Z\x10event-pool/protob\x06proto3"
 
 var (
 	file_internal_proto_event_proto_rawDescOnce sync.Once
@@ -472,24 +690,32 @@ func file_internal_proto_event_proto_rawDescGZIP() []byte {
 	return file_internal_proto_event_proto_rawDescData
 }
 
-var file_internal_proto_event_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
+var file_internal_proto_event_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_internal_proto_event_proto_goTypes = []any{
-	(*StreamEventsRequest)(nil), // 0: eventpool.StreamEventsRequest
-	(*GetEventsRequest)(nil),    // 1: eventpool.GetEventsRequest
-	(*GetEventsResponse)(nil),   // 2: eventpool.GetEventsResponse
-	(*EventData)(nil),           // 3: eventpool.EventData
-	(*Pagination)(nil),          // 4: eventpool.Pagination
-	(*Event)(nil),               // 5: eventpool.Event
+	(*RequestTokenRequest)(nil),      // 0: eventpool.RequestTokenRequest
+	(*RequestTokenResponse)(nil),     // 1: eventpool.RequestTokenResponse
+	(*StreamEventsRequest)(nil),      // 2: eventpool.StreamEventsRequest
+	(*GetEventsRequest)(nil),         // 3: eventpool.GetEventsRequest
+	(*GetEventsResponse)(nil),        // 4: eventpool.GetEventsResponse
+	(*EventData)(nil),                // 5: eventpool.EventData
+	(*Pagination)(nil),               // 6: eventpool.Pagination
+	(*Event)(nil),                    // 7: eventpool.Event
+	(*DisconnectStreamRequest)(nil),  // 8: eventpool.DisconnectStreamRequest
+	(*DisconnectStreamResponse)(nil), // 9: eventpool.DisconnectStreamResponse
 }
 var file_internal_proto_event_proto_depIdxs = []int32{
-	3, // 0: eventpool.GetEventsResponse.data:type_name -> eventpool.EventData
-	4, // 1: eventpool.GetEventsResponse.pagination:type_name -> eventpool.Pagination
-	0, // 2: eventpool.EventService.StreamEvents:input_type -> eventpool.StreamEventsRequest
-	1, // 3: eventpool.EventService.GetEvents:input_type -> eventpool.GetEventsRequest
-	5, // 4: eventpool.EventService.StreamEvents:output_type -> eventpool.Event
-	2, // 5: eventpool.EventService.GetEvents:output_type -> eventpool.GetEventsResponse
-	4, // [4:6] is the sub-list for method output_type
-	2, // [2:4] is the sub-list for method input_type
+	5, // 0: eventpool.GetEventsResponse.data:type_name -> eventpool.EventData
+	6, // 1: eventpool.GetEventsResponse.pagination:type_name -> eventpool.Pagination
+	0, // 2: eventpool.EventService.RequestToken:input_type -> eventpool.RequestTokenRequest
+	2, // 3: eventpool.EventService.StreamEvents:input_type -> eventpool.StreamEventsRequest
+	3, // 4: eventpool.EventService.GetEvents:input_type -> eventpool.GetEventsRequest
+	8, // 5: eventpool.EventService.DisconnectStream:input_type -> eventpool.DisconnectStreamRequest
+	1, // 6: eventpool.EventService.RequestToken:output_type -> eventpool.RequestTokenResponse
+	7, // 7: eventpool.EventService.StreamEvents:output_type -> eventpool.Event
+	4, // 8: eventpool.EventService.GetEvents:output_type -> eventpool.GetEventsResponse
+	9, // 9: eventpool.EventService.DisconnectStream:output_type -> eventpool.DisconnectStreamResponse
+	6, // [6:10] is the sub-list for method output_type
+	2, // [2:6] is the sub-list for method input_type
 	2, // [2:2] is the sub-list for extension type_name
 	2, // [2:2] is the sub-list for extension extendee
 	0, // [0:2] is the sub-list for field type_name
@@ -506,7 +732,7 @@ func file_internal_proto_event_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_proto_event_proto_rawDesc), len(file_internal_proto_event_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   6,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

@@ -10,20 +10,27 @@ import (
 )
 
 type Config struct {
-	Server          ServerConfig   `mapstructure:"server"`
-	Database        DatabaseConfig `mapstructure:"database"`
-	Redis           RedisConfig    `mapstructure:"redis"`
-	Ethereum        EthereumConfig `mapstructure:"ethereum"`
-	MQTT            MQTTConfig     `mapstructure:"mqtt"`
-	Asynq           AsynqConfig    `mapstructure:"asynq"`
-	Node            NodeConfig     `mapstructure:"node"`
+	Server          ServerConfig     `mapstructure:"server"`
+	GrpcServer      GrpcServerConfig `mapstructure:"grpc"`
+	Database        DatabaseConfig   `mapstructure:"database"`
+	Redis           RedisConfig      `mapstructure:"redis"`
+	Ethereum        EthereumConfig   `mapstructure:"ethereum"`
+	MQTT            MQTTConfig       `mapstructure:"mqtt"`
+	Asynq           AsynqConfig      `mapstructure:"asynq"`
+	Node            NodeConfig       `mapstructure:"node"`
 	SecretKey       string
 	SessionContract string `mapstructure:"session_receipt_address"`
 	ChainId         int    `mapstructure:"chain_id"`
 	LogLevel        string `mapstructure:"log_level"`
+	JwtSecretPath   string `mapstructure:"jwt_secret_path"`
 }
 
 type ServerConfig struct {
+	Port int    `mapstructure:"port"`
+	Host string `mapstructure:"host"`
+}
+
+type GrpcServerConfig struct {
 	Port int    `mapstructure:"port"`
 	Host string `mapstructure:"host"`
 }
