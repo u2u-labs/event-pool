@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"event-pool/internal/config"
 	"event-pool/internal/monitor"
@@ -100,8 +102,11 @@ func (s *Server) Start() error {
 	// Create handlers
 	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
 
+	httpMux := http.NewServeMux()
+	corsMux := allowCORS(httpMux)
+
 	// Set up routes
-	http.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			contractHandler.RegisterContract(w, r)
@@ -113,7 +118,7 @@ func (s *Server) Start() error {
 	})
 
 	// events query endpoint
-	http.HandleFunc("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -123,12 +128,12 @@ func (s *Server) Start() error {
 	})
 
 	// Fix the incomplete handler
-	http.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "API endpoint not found", http.StatusNotFound)
 	})
 
 	// Add monitor status endpoint
-	http.HandleFunc("/api/v1/monitor/status", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/monitor/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -139,7 +144,7 @@ func (s *Server) Start() error {
 	})
 
 	// Add MQTT subscription endpoint
-	http.HandleFunc("/api/v1/subscribe", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/subscribe", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -179,16 +184,39 @@ func (s *Server) Start() error {
 		})
 	})
 
-	http.HandleFunc("/api/v1/token", s.grpcServer.RequestTokenHandler)
-	http.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
-	http.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/token", s.grpcServer.RequestTokenHandler)
+	httpMux.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
+	httpMux.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
+	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
 
+	// with cors
+	srv := &http.Server{
+		Handler:           corsMux,
+		ReadHeaderTimeout: 60 * time.Second,
+	}
+
 	// Start the server
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
 	s.logger.Infof("Starting server on %s", addr)
-	return http.ListenAndServe(addr, nil)
+	return srv.Serve(lis)
+}
+
+func allowCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == "OPTIONS" {
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
