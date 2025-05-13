@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	nodestorage "event-pool/contracts/nodesstorage"
 	"event-pool/contracts/sessionreceipt"
 	crypto2 "event-pool/crypto"
 	ws2 "event-pool/helper/ws"
@@ -50,18 +51,20 @@ var (
 
 type Server struct {
 	pb.UnimplementedEventServiceServer
-	mu              sync.RWMutex
-	subscribers     map[string][]chan *pb.Event
-	activeConns     map[string]*activeConnection // Added to track active connections
-	grpcServer      *grpc.Server
-	db              *db.PrismaClient
-	gatewaySecret   []byte
-	jwtSecret       []byte
+	mu            sync.RWMutex
+	subscribers   map[string][]chan *pb.Event
+	activeConns   map[string]*activeConnection // Added to track active connections
+	grpcServer    *grpc.Server
+	db            *db.PrismaClient
+	gatewaySecret []byte
+	jwtSecret     []byte
+	client        *ethereum.Client
+	rdb           *redis.Client
+	scheduler     *SessionScheduler
+	logger        *zap.SugaredLogger
+
 	sessionContract string
-	client          *ethereum.Client
-	rdb             *redis.Client
-	scheduler       *SessionScheduler
-	logger          *zap.SugaredLogger
+	nodeContract    string
 }
 
 // activeConnection tracks both the channel and the websocket connection
@@ -72,7 +75,7 @@ type activeConnection struct {
 	logger     *zap.SugaredLogger
 }
 
-func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, sessionContract string, client *ethereum.Client, rdb *redis.Client, logger *zap.SugaredLogger) *Server {
+func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, sessionContract string, nodeContract string, client *ethereum.Client, rdb *redis.Client, logger *zap.SugaredLogger) *Server {
 	s := &Server{
 		subscribers:     make(map[string][]chan *pb.Event),
 		activeConns:     make(map[string]*activeConnection),
@@ -80,6 +83,7 @@ func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, s
 		gatewaySecret:   []byte(gatewaySecretKey),
 		jwtSecret:       []byte(jwtSecret),
 		sessionContract: sessionContract,
+		nodeContract:    nodeContract,
 		client:          client,
 		rdb:             rdb,
 		logger:          logger,
@@ -433,6 +437,14 @@ func (s *Server) jwtUnaryInterceptor(skippedMethods map[string]bool) grpc.UnaryS
 			return nil, status.Error(codes.Unauthenticated, "Missing metadata")
 		}
 
+		secret := md["x-secret"]
+		if len(secret) == 0 {
+			return nil, status.Error(codes.Unauthenticated, "invalid x-secret")
+		}
+		if s.gatewaySecret != nil && secret[0] != string(s.gatewaySecret) {
+			return nil, status.Error(codes.Unauthenticated, "invalid x-secret")
+		}
+
 		tokens := md["authorization"]
 		if len(tokens) == 0 {
 			return nil, status.Error(codes.Unauthenticated, "Invalid or missing token")
@@ -461,6 +473,14 @@ func (s *Server) jwtStreamInterceptor(skippedMethods map[string]bool) grpc.Strea
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
 			return status.Error(codes.Unauthenticated, "Missing metadata")
+		}
+
+		secret := md["x-secret"]
+		if len(secret) == 0 {
+			return status.Error(codes.Unauthenticated, "invalid x-secret")
+		}
+		if s.gatewaySecret != nil && secret[0] != string(s.gatewaySecret) {
+			return status.Error(codes.Unauthenticated, "invalid x-secret")
 		}
 
 		tokens := md["authorization"]
@@ -525,6 +545,12 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
+	secret := req.Header.Get("X-Secret")
+	if s.gatewaySecret != nil && secret != string(s.gatewaySecret) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	token := req.URL.Query().Get("token")
 	claims, err := s.ValidateJWT(token)
 	if err != nil {
@@ -708,6 +734,11 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	secret := req.Header.Get("X-Secret")
+	if s.gatewaySecret != nil && secret != string(s.gatewaySecret) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	var body struct {
 		Token string `json:"token"`
@@ -774,6 +805,22 @@ func (s *Server) submitSessionReceipt(token string, claims *JwtClaims) {
 	privateKey, err := crypto2.BytesToECDSAPrivateKey(secretBytes)
 	if err != nil {
 		s.logger.Infoln(fmt.Sprintf("Error converting validator key to ECDSA: %s", err.Error()))
+		return
+	}
+
+	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
+	nodeStorage, err := nodestorage.NewNodesStorage(common2.HexToAddress(s.nodeContract), s.client.GetClient())
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error connecting to node storage: %s", err.Error()))
+		return
+	}
+	isValid, err := nodeStorage.IsValidNode(nil, addr)
+	if err != nil {
+		s.logger.Infoln(fmt.Sprintf("Error validating node address: %s", err.Error()))
+		return
+	}
+	if !isValid {
+		s.logger.Infoln(fmt.Sprintf("Invalid node address: %s", addr))
 		return
 	}
 

@@ -20,6 +20,7 @@ type Config struct {
 	Node            NodeConfig       `mapstructure:"node"`
 	SecretKey       string
 	SessionContract string `mapstructure:"session_receipt_address"`
+	NodeContract    string `mapstructure:"node_storage_address"`
 	ChainId         int    `mapstructure:"chain_id"`
 	LogLevel        string `mapstructure:"log_level"`
 	JwtSecretPath   string `mapstructure:"jwt_secret_path"`

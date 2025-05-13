@@ -82,7 +82,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Initialize gRPC server
-	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, strings.TrimSpace(string(jwtSecret)), cfg.SessionContract, ethClients[cfg.ChainId], client, logger.Named("server"))
+	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, strings.TrimSpace(string(jwtSecret)), cfg.SessionContract, cfg.NodeContract, ethClients[cfg.ChainId], client, logger.Named("server"))
 
 	// Initialize monitor
 	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer, logger.Named("monitor"))
