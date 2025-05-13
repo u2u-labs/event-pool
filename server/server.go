@@ -182,7 +182,7 @@ func NewServer(config *Config) (*Server, error) {
 
 	ethClients := make(map[int]*ethereum.Client)
 	for chainID, chainConfig := range config.EthereumRpc.Chains {
-		client, err := ethereum.NewClient(chainConfig.RpcUrl, chainID, int(chainConfig.BlockTime), dbClient)
+		client, err := ethereum.NewClient(chainConfig.RpcUrl, chainID, int(chainConfig.BlockTime), dbClient, logger.Named("rpc"))
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", chainID, err)
 		}

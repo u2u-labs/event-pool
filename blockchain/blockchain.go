@@ -136,7 +136,8 @@ func NewBlockchain(
 	b.db = db
 	b.sqlClient = dbClient
 
-	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient)
+	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient, logger.Named("rpc"))
+	b.ethClients = ethClients
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", b.config.Params.ChainID, err)
 	}

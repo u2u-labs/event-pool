@@ -3,12 +3,12 @@ package ethereum
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/big"
 	"strings"
 	"sync"
 
 	"event-pool/prisma/db"
+	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,9 +22,10 @@ type Client struct {
 	mu        sync.RWMutex
 	db        *db.PrismaClient
 	decoder   *EventDecoder
+	logger    *zap.SugaredLogger
 }
 
-func NewClient(rpcURL string, chainID, blockTime int, db *db.PrismaClient) (*Client, error) {
+func NewClient(rpcURL string, chainID, blockTime int, db *db.PrismaClient, logger *zap.SugaredLogger) (*Client, error) {
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Ethereum node: %w", err)
@@ -36,6 +37,7 @@ func NewClient(rpcURL string, chainID, blockTime int, db *db.PrismaClient) (*Cli
 		blockTime: blockTime,
 		db:        db,
 		decoder:   NewEventDecoder(),
+		logger:    logger,
 	}, nil
 }
 
@@ -59,18 +61,18 @@ func (c *Client) FilterLogs(ctx context.Context, contractAddress common.Address,
 		Topics:    [][]common.Hash{{eventSignature}},
 	}
 
-	log.Printf("Filtering logs with query: FromBlock=%s, ToBlock=%s, Contract=%s, EventSig=%s",
+	c.logger.Infof("Filtering logs with query: FromBlock=%s, ToBlock=%s, Contract=%s, EventSig=%s",
 		fromBlock.String(), toBlock.String(), contractAddress.Hex(), eventSignature.Hex())
 
 	logs, err := c.client.FilterLogs(ctx, query)
 	if err != nil {
-		log.Printf("Error filtering logs: %v", err)
+		c.logger.Infof("Error filtering logs: %v", err)
 		return nil, fmt.Errorf("failed to filter logs: %w", err)
 	}
 
-	log.Printf("Found %d logs for contract %s", len(logs), contractAddress.Hex())
+	c.logger.Infof("Found %d logs for contract %s", len(logs), contractAddress.Hex())
 	for i, eventLog := range logs {
-		log.Printf("Log %d: Block=%d, TxHash=%s, Index=%d, Topics=%v, Data=%s",
+		c.logger.Infof("Log %d: Block=%d, TxHash=%s, Index=%d, Topics=%v, Data=%s",
 			i, eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index, eventLog.Topics, common.Bytes2Hex(eventLog.Data))
 
 		// Get the contract from the database
@@ -83,7 +85,7 @@ func (c *Client) FilterLogs(ctx context.Context, contractAddress common.Address,
 		).Exec(ctx)
 
 		if err != nil {
-			log.Printf("Error finding contract: %v", err)
+			c.logger.Infof("Error finding contract: %v", err)
 			continue
 		}
 
@@ -96,7 +98,7 @@ func (c *Client) FilterLogs(ctx context.Context, contractAddress common.Address,
 		).Exec(ctx)
 
 		if err == nil && existingLog != nil {
-			log.Printf("Event log already exists, skipping: Block=%d, TxHash=%s, Index=%d",
+			c.logger.Infof("Event log already exists, skipping: Block=%d, TxHash=%s, Index=%d",
 				eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index)
 			continue
 		}
@@ -104,12 +106,12 @@ func (c *Client) FilterLogs(ctx context.Context, contractAddress common.Address,
 		// Decode the event data into human-readable JSON
 		decodedData, err := c.decoder.DecodeEvent(eventSignature.Hex(), eventLog.Data, eventLog.Topics)
 		if err != nil {
-			log.Printf("Error decoding event data: %v", err)
+			c.logger.Infof("Error decoding event data: %v", err)
 			// Fall back to hex data if decoding fails
 			decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
 		}
 
-		log.Printf("Decoded event data: %s", decodedData)
+		c.logger.Infof("Decoded event data: %s", decodedData)
 
 		_, err = c.db.EventLog.CreateOne(
 			db.EventLog.Contract.Link(
@@ -122,7 +124,7 @@ func (c *Client) FilterLogs(ctx context.Context, contractAddress common.Address,
 		).Exec(ctx)
 
 		if err != nil {
-			log.Printf("Error creating event log: %v", err)
+			c.logger.Infof("Error creating event log: %v", err)
 		}
 	}
 
@@ -135,7 +137,7 @@ func (c *Client) SubscribeToLogs(ctx context.Context, contractAddress common.Add
 		Topics:    [][]common.Hash{{eventSignature}},
 	}
 
-	log.Printf("Subscribing to logs for contract %s", contractAddress.Hex())
+	c.logger.Infof("Subscribing to logs for contract %s", contractAddress.Hex())
 
 	logs := make(chan Log)
 	sub, err := c.client.SubscribeFilterLogs(ctx, query, logs)
@@ -148,9 +150,9 @@ func (c *Client) SubscribeToLogs(ctx context.Context, contractAddress common.Add
 		for {
 			select {
 			case err := <-sub.Err():
-				log.Printf("Subscription error for contract %s: %v", contractAddress.Hex(), err)
+				c.logger.Infof("Subscription error for contract %s: %v", contractAddress.Hex(), err)
 			case <-ctx.Done():
-				log.Printf("Unsubscribing from logs for contract %s", contractAddress.Hex())
+				c.logger.Infof("Unsubscribing from logs for contract %s", contractAddress.Hex())
 				sub.Unsubscribe()
 				close(logs)
 				return
@@ -158,7 +160,7 @@ func (c *Client) SubscribeToLogs(ctx context.Context, contractAddress common.Add
 		}
 	}()
 
-	log.Printf("Successfully subscribed to logs for contract %s", contractAddress.Hex())
+	c.logger.Infof("Successfully subscribed to logs for contract %s", contractAddress.Hex())
 	return logs, nil
 }
 

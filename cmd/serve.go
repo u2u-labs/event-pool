@@ -74,7 +74,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	// Initialize Ethereum clients
 	ethClients := make(map[int]*ethereum.Client)
 	for chainID, chainConfig := range cfg.Ethereum.Chains {
-		client, err := ethereum.NewClient(chainConfig.RPCURL, chainID, chainConfig.BlockTime, dbClient)
+		client, err := ethereum.NewClient(chainConfig.RPCURL, chainID, chainConfig.BlockTime, dbClient, logger.Named("rpc"))
 		if err != nil {
 			return fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", chainID, err)
 		}
