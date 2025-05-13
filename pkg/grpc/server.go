@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net"
@@ -90,8 +91,8 @@ func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, s
 	)
 	s.grpcServer = grpcServer
 
-	s.scheduler = NewSessionScheduler(func(claims interface{}) {
-		s.submitSessionReceipt(claims.(*JwtClaims))
+	s.scheduler = NewSessionScheduler(func(token string, claims interface{}) {
+		s.submitSessionReceipt(token, claims.(*JwtClaims))
 	})
 
 	return s
@@ -169,8 +170,8 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 	}
 	s.mu.Unlock()
 
-	// Schedule a job to submit session receipt after disconnect
-	s.scheduler.ScheduleSessionReceipt(token, claims, ReceiptSubmissionDelay)
+	// Track if this was a clean disconnect
+	cleanDisconnect := false
 
 	// Cleanup when the stream ends
 	defer func() {
@@ -189,6 +190,11 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 		s.mu.Unlock()
 		close(eventChan)
 		cancel()
+
+		// If this wasn't a clean disconnect, schedule a session receipt
+		if !cleanDisconnect {
+			s.scheduler.ScheduleSessionReceipt(token, claims, ReceiptSubmissionDelay)
+		}
 	}()
 
 	// Send initial connection confirmation
@@ -209,14 +215,33 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 		select {
 		case <-timer.C:
 			s.logger.Infoln("Connection expired")
-			go s.submitSessionReceipt(claims)
+			cleanDisconnect = true // This is an expected disconnect
+			go s.submitSessionReceipt(token, claims)
 			return nil
 		case <-ctx.Done():
 			s.logger.Infoln("gRPC stream terminated by server")
+			cleanDisconnect = true // This is an expected disconnect
 			return nil
 		case event := <-eventChan:
+			// counting total bytes sent
+			count := int64(len(event.Data))
+			total, err := s.rdb.IncrBy(ctx, token, count).Result()
+			if err != nil {
+				s.logger.Warnw("Unable to increment user total bytes sent", "err", err.Error(), "addr", claims.Address)
+			}
+
+			// If total equals `count`, it means the key was just created
+			if total == count {
+				expireAt := time.Unix(claims.ExpiresAt.Unix(), 0).Add(10 * time.Minute)
+				err = s.rdb.ExpireAt(ctx, token, expireAt).Err()
+				if err != nil {
+					s.logger.Warnw("Unable to set expiration on user byte count", "err", err.Error(), "addr", claims.Address)
+				}
+			}
+
 			if err := stream.Send(event); err != nil {
 				s.logger.Infoln(fmt.Sprintf("Unable to send event: %s", err.Error()))
+				// Error sending - likely client disconnected unexpectedly
 				return err
 			}
 		}
@@ -382,7 +407,7 @@ func (s *Server) DisconnectStream(ctx context.Context, req *pb.DisconnectStreamR
 	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
 
 	// Submit session receipt asynchronously
-	go s.submitSessionReceipt(claims)
+	go s.submitSessionReceipt(token, claims)
 
 	// Return success response
 	return &pb.DisconnectStreamResponse{
@@ -544,9 +569,8 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 	}
 	s.mu.Unlock()
 
-	// Schedule a job to submit session receipt after disconnect
-	// This will run if the client disconnects unexpectedly
-	s.scheduler.ScheduleSessionReceipt(token, claims, ReceiptSubmissionDelay)
+	// Track if this was a clean disconnect
+	cleanDisconnect := false
 
 	// Cleanup when the stream ends
 	defer func() {
@@ -565,6 +589,11 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 		s.mu.Unlock()
 		close(eventChan)
 		cancel()
+
+		// If this wasn't a clean disconnect, schedule a session receipt
+		if !cleanDisconnect {
+			s.scheduler.ScheduleSessionReceipt(token, claims, ReceiptSubmissionDelay)
+		}
 	}()
 
 	// Defer WS closure
@@ -608,11 +637,13 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 		// Check if context is done (disconnection requested)
 		select {
 		case <-timer.C:
-			s.logger.Infoln("Connection expired")
-			go s.submitSessionReceipt(claims)
+			s.logger.Infow("Connection expired", "addr", claims.Address)
+			cleanDisconnect = true // This is an expected disconnect
+			go s.submitSessionReceipt(token, claims)
 			return
 		case <-ctx.Done():
-			s.logger.Infoln("Connection terminated by server")
+			cleanDisconnect = true // This is an expected disconnect
+			s.logger.Infow("Connection terminated by server", "addr", claims.Address)
 			return
 		default:
 			// Continue normal operation
@@ -643,8 +674,25 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 				"tx_hash":      event.TxHash,
 				"block_number": event.BlockNumber,
 			}
+			dataRaws := Data(data)
 
-			if sendErr := wrapConn.WriteMessage(msgType, Data(data)); sendErr != nil {
+			// counting total bytes sent
+			count := int64(len(event.Data))
+			total, err := s.rdb.IncrBy(ctx, token, count).Result()
+			if err != nil {
+				s.logger.Warnw("Unable to increment user total bytes sent", "err", err.Error(), "addr", claims.Address)
+			}
+
+			// If total equals `count`, it means the key was just created
+			if total == count {
+				expireAt := time.Unix(claims.ExpiresAt.Unix(), 0).Add(10 * time.Minute)
+				err = s.rdb.ExpireAt(ctx, token, expireAt).Err()
+				if err != nil {
+					s.logger.Warnw("Unable to set expiration on user byte count", "err", err.Error(), "addr", claims.Address)
+				}
+			}
+
+			if sendErr := wrapConn.WriteMessage(msgType, dataRaws); sendErr != nil {
 				s.logger.Infoln(fmt.Sprintf("Unable to write WS message, %s", err.Error()))
 				return
 			}
@@ -712,19 +760,11 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 
 	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
 
-	go s.submitSessionReceipt(claims)
+	go s.submitSessionReceipt(token, claims)
 }
 
 // submitSessionReceipt handles submitting the session receipt data to the blockchain
-func (s *Server) submitSessionReceipt(claims *JwtClaims) {
-	// submit receipt data
-	now := time.Now().Unix()
-	iss, err := claims.GetIssuedAt()
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error getting issuer: %s", err.Error()))
-		return
-	}
-
+func (s *Server) submitSessionReceipt(token string, claims *JwtClaims) {
 	// Load private key for signing
 	secretBytes, err := os.ReadFile(filepath.Join(viper.GetString("data_dir"), "consensus/validator.key"))
 	if err != nil {
@@ -767,11 +807,21 @@ func (s *Server) submitSessionReceipt(claims *JwtClaims) {
 		return
 	}
 
+	totalBytesServed, err := s.rdb.Get(context.Background(), token).Int64()
+	if errors.Is(err, redis.Nil) {
+		s.logger.Infow("User byte count key does not exist", "addr", claims.Address)
+		totalBytesServed = 0
+		return
+	} else if err != nil {
+		s.logger.Errorw("Error fetching total bytes served", "err", err.Error(), "addr", claims.Address)
+		return
+	}
+
 	// Call CreateSessionReceipt with the auth object to sign and send the transaction
 	tx, err := sessionReceipt.CreateSessionReceipt(
 		auth,
 		common2.HexToAddress(claims.Address),
-		big.NewInt(now-iss.Unix()),
+		big.NewInt(totalBytesServed),
 		common2.HexToAddress("0x0000000000000000000000000000000000000000"),
 		0,
 		nonce,
@@ -792,6 +842,7 @@ func (s *Server) submitSessionReceipt(claims *JwtClaims) {
 
 	if receipt.Status == types.ReceiptStatusSuccessful {
 		s.logger.Infof("Session receipt transaction successful, block: %d\n", receipt.BlockNumber)
+		_ = s.rdb.Del(context.Background(), token).Err()
 	} else {
 		s.logger.Infoln("Session receipt transaction failed")
 	}

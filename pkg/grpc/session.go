@@ -51,11 +51,11 @@ type SessionScheduler struct {
 	timer    *time.Timer
 	trigger  chan struct{}
 	shutdown chan struct{}
-	submitFn func(claims interface{}) // Replace with your actual function signature
+	submitFn func(token string, claims interface{}) // Replace with your actual function signature
 }
 
 // NewSessionScheduler creates a new scheduler
-func NewSessionScheduler(submitFn func(claims interface{})) *SessionScheduler {
+func NewSessionScheduler(submitFn func(token string, claims interface{})) *SessionScheduler {
 	s := &SessionScheduler{
 		jobs:     make(SessionJobHeap, 0),
 		jobMap:   make(map[string]*SessionJob),
@@ -125,7 +125,7 @@ func (s *SessionScheduler) run() {
 			if !job.canceled {
 				// Submit the receipt in a separate goroutine to avoid blocking
 				job := job // Create a new variable to avoid data race
-				go s.submitFn(job.claims)
+				go s.submitFn(job.token, job.claims)
 			}
 			delete(s.jobMap, job.token)
 		}

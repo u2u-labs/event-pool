@@ -74,5 +74,5 @@ node_storage_address: 0x8B0b7E0c9C5a6B48F5bA0352713B85c2C4973B78
 log_level: info
 
 chain_id: 2484
-session_receipt_address: 0x0440619edb00d5B046D9CaA5b894D5960fD66B41
+session_receipt_address: 0xdEB3005c8C5512440313319222A80F795EF52DAb
 jwt_secret_path: ./jwt_secret.key
