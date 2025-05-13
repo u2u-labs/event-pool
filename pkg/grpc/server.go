@@ -151,7 +151,7 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 	token := strings.TrimPrefix(tokens[0], "Bearer ")
 
 	// Format the key the same way as in WebSocket handler
-	key := fmt.Sprintf("%d/%s/%s", req.ChainId, req.ContractAddress, req.EventSignature)
+	key := strings.ToLower(fmt.Sprintf("%d/%s/%s", req.ChainId, req.ContractAddress, req.EventSignature))
 
 	// Create a context with cancel for this connection
 	ctx, cancel := context.WithCancel(stream.Context())
@@ -254,7 +254,7 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 }
 
 func (s *Server) BroadcastEvent(chainID int32, contractAddr string, eventSignature string, event *pb.Event) error {
-	key := fmt.Sprintf("%d/%s/%s", chainID, contractAddr, eventSignature)
+	key := strings.ToLower(fmt.Sprintf("%d/%s/%s", chainID, contractAddr, eventSignature))
 
 	s.mu.RLock()
 	subscribers := s.subscribers[key]

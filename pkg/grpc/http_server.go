@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	ws2 "event-pool/helper/ws"
@@ -87,7 +88,7 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 	chainId := req.URL.Query().Get("chain_id")
 	contractAddress := req.URL.Query().Get("contract_address")
 	eventName := req.URL.Query().Get("event_name")
-	key := fmt.Sprintf("%s/%s/%s", chainId, contractAddress, eventName)
+	key := strings.ToLower(fmt.Sprintf("%s/%s/%s", chainId, contractAddress, eventName))
 
 	// Create a context with cancel for this connection
 	ctx, cancel := context.WithCancel(context.Background())

@@ -103,7 +103,7 @@ func (s *Server) Start() error {
 	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
 
 	httpMux := http.NewServeMux()
-	corsMux := allowCORS(httpMux)
+	corsMux := s.loggingMiddleware(allowCORS(httpMux))
 
 	// Set up routes
 	httpMux.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
@@ -207,6 +207,21 @@ func (s *Server) Start() error {
 
 	s.logger.Infof("Starting server on %s", addr)
 	return srv.Serve(lis)
+}
+
+func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		duration := time.Since(start)
+
+		s.logger.Infow("incoming request",
+			"remote", r.RemoteAddr,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"duration", duration,
+		)
+	})
 }
 
 func allowCORS(h http.Handler) http.Handler {
