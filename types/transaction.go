@@ -22,6 +22,8 @@ type Transaction struct {
 
 	// Cache
 	size atomic.Value
+	// hash of input
+	InputHash Hash
 }
 
 // IsContractCreation checks if tx is contract creation

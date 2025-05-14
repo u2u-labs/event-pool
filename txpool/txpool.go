@@ -60,6 +60,7 @@ var (
 	ErrRejectFutureTx          = errors.New("rejected future tx due to low slots")
 	ErrSmartContractRestricted = errors.New("smart contract deployment restricted")
 	ErrRejectedMethods         = errors.New("rejected admin tx")
+	ErrInvalidTxData           = errors.New("invalid tx data")
 )
 
 // indicates origin of a transaction
@@ -256,7 +257,7 @@ func NewTxPool(
 		metrics:        metrics,
 		executables:    newPricedQueue(),
 		accounts:       accountsMap{maxEnqueuedLimit: config.MaxAccountEnqueued},
-		index:          lookupMap{all: make(map[types.Hash]*types.Transaction)},
+		index:          lookupMap{all: make(map[types.Hash]*types.Transaction), filterLogs: make(map[types.Hash]struct{})},
 		gauge:          slotGauge{height: 0, max: config.MaxSlots},
 		priceLimit:     config.PriceLimit,
 		monitorApiHost: config.MonitorApiHost,
@@ -673,33 +674,6 @@ func (p *TxPool) validateTx(tx *types.Transaction) error {
 		return ErrSmartContractRestricted
 	}
 
-	//// Reject underpriced transactions
-	//if tx.IsUnderpriced(p.priceLimit) {
-	//	return ErrUnderpriced
-	//}
-
-	// Grab the state root for the latest block
-	//stateRoot := p.store.Header().StateRoot
-
-	// Check nonce ordering
-	//if p.store.GetNonce(stateRoot, tx.From) > tx.Nonce {
-	//	return ErrNonceTooLow
-	//}
-
-	//accountBalance, balanceErr := p.store.GetBalance(stateRoot, tx.From)
-	//if balanceErr != nil {
-	//	return ErrInvalidAccountState
-	//}
-	//
-	//// Check if the sender has enough funds to execute the transaction
-	//if accountBalance.Cmp(tx.Cost()) < 0 {
-	//	return ErrInsufficientFunds
-	//}
-	//
-	//if tx.To == nil {
-	//	return nil
-	//}
-
 	return nil
 }
 
@@ -743,7 +717,7 @@ func (p *TxPool) pruneAccountsWithNonceHoles() {
 // successful, an account is created for this address
 // (only once) and an enqueueRequest is signaled.
 func (p *TxPool) addTx(origin txOrigin, tx *types.Transaction) error {
-	p.logger.Debug("add tx",
+	p.logger.Debugw("add tx",
 		"origin", origin.String(),
 		"hash", tx.Hash.String(),
 	)
@@ -770,6 +744,13 @@ func (p *TxPool) addTx(origin txOrigin, tx *types.Transaction) error {
 	}
 
 	tx.ComputeHash()
+
+	// check input hash
+	params := types.FilterLogsParams{}
+	if err := json.Unmarshal(tx.Input, &params); err != nil {
+		return ErrInvalidTxData
+	}
+	tx.InputHash = types.Hash(params.ComputeHash())
 
 	// add to index
 	if ok := p.index.add(tx); !ok {
