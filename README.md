@@ -193,7 +193,7 @@ Look at `.example.env` for more environment variables settings (remove `.example
 
 By providing `NODE_PRIV_KEY` you can start a node with your private key.
 
-### Development
+### Run Locally
 
 Read `Makefile` for available commands. We have `make api1` and `make run` as alternatives to run the service in `Usage` section.
 
