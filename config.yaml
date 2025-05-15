@@ -43,7 +43,7 @@ node_chain:
   name: "event_pool"
   params:
     chain_id: 2484
-    block_time: 5
+    block_time: 1500 # milliseconds
     price_limit: 21000
     epoch_size: 300
     max_account_enqueued: 10000

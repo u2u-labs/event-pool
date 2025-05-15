@@ -22,7 +22,7 @@ run:
 init:
 	go build -ldflags -w
 	chmod +x event-pool
-	./event-pool secrets init --data-dir ./data/temp
+	./event-pool secrets init --data-dir ./data/chain
 
 inittest:
 	rm -rf ./data/test

@@ -143,7 +143,7 @@ func Factory(params *consensus.Params) (consensus.Consensus, error) {
 			params.Logger,
 			params.Network,
 			params.Blockchain,
-			time.Duration(params.BlockTime)*time.Second,
+			time.Duration(params.BlockTime)*time.Millisecond,
 		),
 		secretsManager: params.SecretsManager,
 		Grpc:           params.Grpc,
@@ -156,7 +156,7 @@ func Factory(params *consensus.Params) (consensus.Consensus, error) {
 		config:             params.Config,
 		epochSize:          epochSize,
 		quorumSizeBlockNum: quorumSizeBlockNum,
-		blockTime:          time.Duration(params.BlockTime) * time.Second,
+		blockTime:          time.Duration(params.BlockTime) * time.Millisecond,
 
 		// Channels
 		closeCh: make(chan struct{}),

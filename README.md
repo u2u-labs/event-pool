@@ -98,17 +98,51 @@ curl -X POST http://localhost:8080/api/v1/contracts \
     "chainId": 1,
     "contractAddress": "0x...",
     "eventSignature": "Transfer(address,address,uint256)",
+    "eventAbi": "",
     "startBlock": 12345678
   }'
 ```
 
+### Request access token
+Use grpc client to request token:
+```
+<your-domain>/eventpool.EventService/RequestToken
+```
+
+Example Body Message
+```json
+{
+    "address": "0x01857E2BCFcb8B4eF76Df6590F8dCd3bf736C9E9",
+    "duration": "10000"
+}
+```
+
+Required Metadata
+```
+x-secret: <gateway-secret>
+```
+
 ### Subscribing to Events
 
-Connect to the WebSocket endpoint:
+Use grpc client to connect to stream rpc endpoint:
 
 Update the query parameters with your subscription details: `token`, `chain_id`, `contract_address`, and `event_name`.
 ```
-ws://your-domain/api/v1/ws?token=&chain_id=2484&contract_address&event_name=NodeAdded
+<your-domain>/eventpool.EventService/StreamEvents
+```
+
+Example Body Message
+```json
+{
+    "chain_id": 2484,
+    "contract_address": "0x8B0b7E0c9C5a6B48F5bA0352713B85c2C4973B78",
+    "event_signature": "NodeAdded"
+}
+```
+
+Required Metadata
+```
+x-secret: <gateway-secret>
 ```
 
 ## Development
@@ -154,6 +188,21 @@ go test ./...
 ```bash
 POSTGRES_PASSWORD=postgres NODE_PRIV_KEY=<your-private-key> docker compose up -d
 ```
+
+Look at `.example.env` for more environment variables settings (remove `.example` from the filename to use it).
+
+By providing `NODE_PRIV_KEY` you can start a node with your private key.
+
+### Development
+
+Read `Makefile` for available commands. We have `make api1` and `make run` as alternatives to run the service in `Usage` section.
+
+Look at `.example.env` for more environment variables settings (remove `.example` from the filename to use it).
+
+You might want to change node's private key and libp2p key to your own keys. Use `make init` to generate a directory with keys.
+It will create a new directory `./data/chain`. You need to change `./data/chain/consensus/validator.key` to your own private key.
+
+Update `DATA_DIR` in `.env` to point to the directory with new keys.
 
 ## License
 
