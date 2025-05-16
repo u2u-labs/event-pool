@@ -106,7 +106,7 @@ curl -X POST http://localhost:8080/api/v1/contracts \
 ### Request access token
 Use grpc client to request token:
 ```
-<your-domain>/eventpool.EventService/RequestToken
+localhost:9090/eventpool.EventService/RequestToken
 ```
 
 Example Body Message
@@ -119,16 +119,18 @@ Example Body Message
 
 Required Metadata
 ```
-x-secret: <gateway-secret>
+x-secret: gateway_secret_key
 ```
 
 ### Subscribing to Events
 
 Use grpc client to connect to stream rpc endpoint:
 
-Update the query parameters with your subscription details: `token`, `chain_id`, `contract_address`, and `event_name`.
+Used token from `RequestToken` response for authorization.
+
+Update the query parameters with your subscription details: `chain_id`, `contract_address`, and `event_name`.
 ```
-<your-domain>/eventpool.EventService/StreamEvents
+localhost:9090/eventpool.EventService/StreamEvents
 ```
 
 Example Body Message
@@ -142,7 +144,7 @@ Example Body Message
 
 Required Metadata
 ```
-x-secret: <gateway-secret>
+x-secret: gateway_secret_key
 ```
 
 ## Development
