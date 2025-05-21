@@ -27,7 +27,7 @@ import (
 
 const (
 	txSlotSize  = 32 * 1024  // 32kB
-	txMaxSize   = 128 * 1024 // 128Kb
+	txMaxSize   = 256 * 1024 // 256Kb
 	topicNameV1 = "txpool/0.1"
 
 	contractRegistrationV1 = "contract/registration/0.1"
