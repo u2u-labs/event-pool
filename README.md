@@ -14,7 +14,7 @@ Event Pool is a service that listens to specific smart contract events on suppor
 
 ## Tech Stack
 
-- Go 1.21+
+- Go 1.23+
 - Cobra for CLI
 - Viper for configuration
 - Prisma for database access
@@ -26,7 +26,7 @@ Event Pool is a service that listens to specific smart contract events on suppor
 
 ## Prerequisites
 
-- Go 1.21 or later
+- Go 1.23 or later
 - PostgreSQL 12 or later
 - Redis 6 or later
 - Access to Ethereum node RPC endpoints
@@ -104,6 +104,7 @@ curl -X POST http://localhost:8080/api/v1/contracts \
 ```
 
 ### Request access token
+
 Use grpc client to request token:
 ```
 localhost:9090/eventpool.EventService/RequestToken
@@ -147,6 +148,30 @@ Required Metadata
 x-secret: gateway_secret_key
 ```
 
+## Concepts
+
+Event Pool is a distributed service that listens to specific smart contract events on supported L1 chains, stores them, and pushes them to subscribing clients in real-time.
+
+The system consists of two main components:
+
+### Event Pool Service
+
+The core service responsible for:
+- Monitoring smart contract events on various blockchain networks
+- Storing event data in PostgreSQL database
+- Publishing events to subscribed clients via gRPC
+- Managing contract registrations and subscriptions
+- Providing APIs for client interactions
+
+### P2P Sync Network
+
+A peer-to-peer network layer that enables:
+- Event data synchronization between multiple Event Pool instances
+- Distributed IBFT consensus
+- Blockchain state management and validation
+
+This architecture ensures high availability, scalability, and data consistency across the distributed network while providing real-time event streaming capabilities to clients.
+
 ## Development
 
 ### Project Structure
@@ -176,7 +201,6 @@ x-secret: gateway_secret_key
 ├── txpool          # Txpool
 ├── types           # Types and constants
 └── validators      # Validators store
-
 ```
 
 ### Running Tests
@@ -208,4 +232,4 @@ Update `DATA_DIR` in `.env` to point to the directory with new keys.
 
 ## License
 
-MIT License 
+MIT License
