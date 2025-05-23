@@ -890,7 +890,7 @@ func (p *TxPool) addContractRegistration(req *api.RegisterContractRequest) error
 	if err != nil {
 		return err
 	}
-	p.logger.Infof("response %s\n", body)
+	p.logger.Infof("register contract response %s", body)
 
 	return nil
 }

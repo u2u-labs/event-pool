@@ -61,11 +61,14 @@ type Server struct {
 	jwtSecret     []byte
 	client        *ethereum.Client
 	rdb           *redis.Client
+	metrics       *sync.Map
 	scheduler     *SessionScheduler
 	logger        *zap.SugaredLogger
 
 	sessionContract string
 	nodeContract    string
+
+	GetMonitorLastBlock func(int) (uint64, error)
 }
 
 // activeConnection tracks both the channel and the websocket connection
@@ -87,6 +90,7 @@ func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, s
 		nodeContract:    nodeContract,
 		client:          client,
 		rdb:             rdb,
+		metrics:         &sync.Map{},
 		logger:          logger,
 	}
 
@@ -117,6 +121,10 @@ func (s *Server) Stop() {
 	s.scheduler.Stop()
 	s.grpcServer.Stop()
 	s.logger.Info("gRPC server stopped")
+}
+
+func (s *Server) GetMetrics() *sync.Map {
+	return s.metrics
 }
 
 func (s *Server) RequestToken(ctx context.Context, req *pb.RequestTokenRequest) (*pb.RequestTokenResponse, error) {

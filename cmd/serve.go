@@ -86,9 +86,10 @@ func RunServe(cmd *cobra.Command, args []string) error {
 
 	// Initialize monitor
 	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer, logger.Named("monitor"))
+	grpcServer.GetMonitorLastBlock = mon.GetLastSyncedBlock
 
 	// Initialize worker
-	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, mon, logger.Named("worker"))
+	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, client, mon, grpcServer.GetMetrics(), logger.Named("worker"))
 	go func() {
 		if err := worker.Start(); err != nil {
 			log.Printf("Worker error: %v", err)

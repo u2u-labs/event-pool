@@ -3,14 +3,20 @@ package grpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	ws2 "event-pool/helper/ws"
 	pb "event-pool/internal/proto"
 	"event-pool/network/common"
+	"event-pool/pkg/ethereum"
+	"event-pool/prisma/db"
+	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 )
 
@@ -308,4 +314,82 @@ func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
 
 	go s.submitSessionReceipt(token, claims)
+}
+
+func (s *Server) GetContractStatus(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+
+	chainId := vars["chainId"]
+	address := vars["address"]
+	eventNameString := vars["eventName"]
+	if chainId == "" || address == "" || eventNameString == "" {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	chainIdNumber, err := strconv.ParseInt(chainId, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid chainId", http.StatusBadRequest)
+		return
+	}
+
+	// extract event name from event signature
+	eventName := eventNameString
+	if strings.Contains(eventNameString, "(") {
+		eventName, err = ethereum.ExtractEventName(eventNameString)
+		if err != nil {
+			s.logger.Infof("Error extracting event name: %v", err)
+			http.Error(w, fmt.Sprintf("Invalid event signature format: %v", err), http.StatusBadRequest)
+			return
+		}
+	}
+
+	contractInfo, err := s.db.Contract.FindFirst(
+		db.Contract.ChainID.Equals(int(chainIdNumber)),
+		db.Contract.Address.Equals(strings.ToLower(address)),
+		db.Contract.EventName.Equals(eventName)).Exec(req.Context())
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			http.Error(w, "Contract not found", http.StatusNotFound)
+			return
+		}
+		s.logger.Errorw("Error querying contract status", "err", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	key := strings.ToLower(fmt.Sprintf("backfill_status:%s/%s/%s", chainId, address, contractInfo.EventSignature))
+	data, ok := s.metrics.Load(key)
+	if ok {
+		currentBlock, ok := data.(*big.Int)
+		if !ok {
+			s.logger.Errorw("Error getting current block number", "err", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]any{
+			"chainId":            chainId,
+			"contractAddress":    address,
+			"eventName":          eventName,
+			"currentBlockNumber": currentBlock,
+		})
+		return
+	}
+
+	lastBlock, err := s.GetMonitorLastBlock(int(chainIdNumber))
+	if err != nil {
+		http.Error(w, "Chain not supported", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]any{
+		"chainId":            chainId,
+		"contractAddress":    address,
+		"eventName":          eventName,
+		"currentBlockNumber": lastBlock,
+	})
 }

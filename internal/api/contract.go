@@ -166,7 +166,7 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 			return
 		}
 
-		// send post request to the server
+		// broadcast to all peers to register contract
 		resp, err := http.Post(
 			fmt.Sprintf("http://%s%s/txpool/contract/register",
 				viper.GetString("JSONRPC_HOST"),
@@ -199,7 +199,7 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 		}
 	}()
 
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RegisterContractResponse{ID: contract.ID})
 }

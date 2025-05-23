@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"sync"
 
 	"event-pool/internal/listener"
 	"event-pool/internal/monitor"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -34,11 +36,14 @@ type Worker struct {
 	redisAddr  string
 	db         *db.PrismaClient
 	decoder    *ethereum.EventDecoder
+	rdb        *redis.Client
+	metrics    *sync.Map
 	monitor    *monitor.Monitor
 	logger     *zap.SugaredLogger
 }
 
-func NewWorker(redisAddr string, ethClients map[int]*ethereum.Client, db *db.PrismaClient, monitor *monitor.Monitor, logger *zap.SugaredLogger) *Worker {
+func NewWorker(redisAddr string, ethClients map[int]*ethereum.Client, db *db.PrismaClient, rdb *redis.Client,
+	monitor *monitor.Monitor, metrics *sync.Map, logger *zap.SugaredLogger) *Worker {
 	srv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: redisAddr},
 		asynq.Config{Concurrency: 10},
@@ -49,6 +54,8 @@ func NewWorker(redisAddr string, ethClients map[int]*ethereum.Client, db *db.Pri
 		ethClients: ethClients,
 		redisAddr:  redisAddr,
 		db:         db,
+		rdb:        rdb,
+		metrics:    metrics,
 		decoder:    ethereum.NewEventDecoder(),
 		monitor:    monitor,
 		logger:     logger,
@@ -132,6 +139,9 @@ func (w *Worker) handleBackfill(ctx context.Context, t *asynq.Task) error {
 		ethereum.HexToAddress(p.ContractAddr),
 		ethereum.HexToHash(p.EventSig),
 		big.NewInt(p.StartBlock),
+		w.rdb,
+		w.metrics,
+		w.logger.Named("event_listener"),
 	)
 
 	w.logger.Infof("Created event listener for contract %s", p.ContractAddr)

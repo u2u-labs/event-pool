@@ -598,3 +598,16 @@ func (m *Monitor) SendTx(ctx context.Context, filter types.FilterLogsParams) err
 
 	return nil
 }
+
+// GetLastSyncedBlock returns the last synced block for a given chain ID
+// when backfill process finishes, we should return the current block tracking from monitor
+// if not, we will use the last synced block from backfill
+func (m *Monitor) GetLastSyncedBlock(chainId int) (uint64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	lastBlock, exists := m.lastBlocks[chainId]
+	if !exists {
+		return 0, fmt.Errorf("last block not found or chain id is not monitored")
+	}
+	return lastBlock, nil
+}

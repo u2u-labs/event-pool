@@ -16,6 +16,7 @@ import (
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
 	"go.uber.org/zap"
+	"gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
 type Server struct {
@@ -102,7 +103,7 @@ func (s *Server) Start() error {
 	// Create handlers
 	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
 
-	httpMux := http.NewServeMux()
+	httpMux := mux.NewRouter()
 	corsMux := s.loggingMiddleware(allowCORS(httpMux))
 
 	// Set up routes
@@ -187,6 +188,7 @@ func (s *Server) Start() error {
 	httpMux.HandleFunc("/api/v1/token", s.grpcServer.RequestTokenHandler)
 	httpMux.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
 	httpMux.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
+	httpMux.HandleFunc("/api/v1/status/{chainId}/{address}/{eventName}", s.grpcServer.GetContractStatus).Methods("GET")
 	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
