@@ -183,6 +183,7 @@ func runPreRun(cmd *cobra.Command, _ []string) error {
 	params.setRawJSONRPCAddress(helper.GetJSONRPCAddress(cmd))
 	params.setRawLibp2p(helper.GetLibp2p(cmd))
 	params.setRawDataDir(helper.GetDataDir(cmd))
+	params.setRawPrometheus(helper.GetPrometheusAddress(cmd))
 
 	if err := params.initRawParams(); err != nil {
 		return err

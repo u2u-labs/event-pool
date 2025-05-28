@@ -120,6 +120,10 @@ func GetDataDir(cmd *cobra.Command) string {
 	return cmd.Flag(cmd2.DataDirFlag).Value.String()
 }
 
+func GetPrometheusAddress(cmd *cobra.Command) string {
+	return cmd.Flag(cmd2.PrometheusFlag).Value.String()
+}
+
 // RegisterJSONOutputFlag registers the --json output setting for all child commands
 func RegisterJSONOutputFlag(cmd *cobra.Command) {
 	cmd.PersistentFlags().Bool(

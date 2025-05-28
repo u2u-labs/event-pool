@@ -128,6 +128,13 @@ func (p *serverParams) setRawDataDir(dataDir string) {
 	p.rawConfig.DataDir = dataDir
 }
 
+func (p *serverParams) setRawPrometheus(prometheusAddr string) {
+	if prometheusAddr == "" {
+		return
+	}
+	p.rawConfig.Telemetry.PrometheusAddr = prometheusAddr
+}
+
 func (p *serverParams) generateConfig() *server.Config {
 	lvl, _ := zapcore.ParseLevel(p.rawConfig.LogLevel)
 	return &server.Config{
