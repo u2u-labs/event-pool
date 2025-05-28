@@ -245,7 +245,7 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	chainIdStr := r.URL.Query().Get("chainId")
 	txHash := r.URL.Query().Get("txHash")
 	pageStr := r.URL.Query().Get("take")
-	limitStr := r.URL.Query().Get("skip")
+	skipStr := r.URL.Query().Get("skip")
 
 	if contractAddress == "" {
 		http.Error(w, "contractAddress is required", http.StatusBadRequest)
@@ -273,11 +273,11 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if limitStr != "" {
-		if s, err := strconv.Atoi(limitStr); err == nil && s > 0 {
+	if skipStr != "" {
+		if s, err := strconv.Atoi(skipStr); err == nil && s >= 0 {
 			skip = s
 		} else {
-			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			http.Error(w, "invalid skip parameter", http.StatusBadRequest)
 			return
 		}
 	}
@@ -323,5 +323,6 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
 }

@@ -63,6 +63,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	if err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("failed to read JWT secret: %w", err)
 	}
+	cfg.JwtSecret = string(jwtSecret)
 
 	// Initialize database
 	dbClient, err := db.NewClient()
@@ -97,7 +98,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Initialize API server
-	server := api.NewServer(cfg, dbClient, worker, ethClients, grpcServer, mon, logger.Named("api"))
+	server := api.NewServer(cfg, dbClient, client, worker, ethClients, grpcServer, mon, logger.Named("api"))
 	go func() {
 		if err := server.Start(); err != nil {
 			log.Printf("Server error: %v", err)

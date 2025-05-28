@@ -10,18 +10,21 @@ import (
 	"time"
 
 	"event-pool/internal/config"
+	"event-pool/internal/jwt"
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
+	"github.com/gorilla/mux"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
-	"gopkg.in/DataDog/dd-trace-go.v1/contrib/gorilla/mux"
 )
 
 type Server struct {
 	config     *config.Config
 	db         *db.PrismaClient
+	rdb        *redis.Client
 	worker     *worker.Worker
 	grpcServer *grpc.Server
 	ethClients map[int]*ethereum.Client
@@ -50,7 +53,7 @@ func (s *Server) GetActiveContracts(ctx context.Context) ([]db.ContractModel, er
 	return s.db.Contract.FindMany().Exec(ctx)
 }
 
-func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor, logger *zap.SugaredLogger) *Server {
+func NewServer(config *config.Config, db *db.PrismaClient, rdb *redis.Client, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor, logger *zap.SugaredLogger) *Server {
 	// grpcServer := grpc.NewServer()
 	// Create monitor
 	// mon := monitor.NewMonitor(ethClients, db, grpcServer)
@@ -58,6 +61,7 @@ func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker
 	return &Server{
 		config:     config,
 		db:         db,
+		rdb:        rdb,
 		worker:     worker,
 		grpcServer: grpcServer,
 		ethClients: ethClients,
@@ -104,7 +108,12 @@ func (s *Server) Start() error {
 	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
 
 	httpMux := mux.NewRouter()
-	corsMux := s.loggingMiddleware(allowCORS(httpMux))
+	httpMux.Use(s.loggingMiddleware)
+	httpMux.Use(allowCORS)
+
+	authRoutes := httpMux.NewRoute().Subrouter()
+	authRoutes.Use(authMiddleware(s.config.JwtSecret))
+	authRoutes.Use(s.successBasedRateLimitMiddleware(100000, time.Hour)) // 100000 requests per hour
 
 	// Set up routes
 	httpMux.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
@@ -119,14 +128,7 @@ func (s *Server) Start() error {
 	})
 
 	// events query endpoint
-	httpMux.HandleFunc("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		contractHandler.GetEvents(w, r)
-	})
+	authRoutes.HandleFunc("/api/v1/events", contractHandler.GetEvents).Methods(http.MethodGet)
 
 	// Fix the incomplete handler
 	httpMux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
@@ -196,7 +198,7 @@ func (s *Server) Start() error {
 
 	// with cors
 	srv := &http.Server{
-		Handler:           corsMux,
+		Handler:           httpMux,
 		ReadHeaderTimeout: 60 * time.Second,
 	}
 
@@ -236,4 +238,26 @@ func allowCORS(h http.Handler) http.Handler {
 		}
 		h.ServeHTTP(w, r)
 	})
+}
+
+func authMiddleware(jwtSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Get Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				return
+			}
+
+			claims, err := jwt.ValidateJWT(authHeader, []byte(jwtSecret), nil)
+			if err != nil {
+				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), "address", strings.ToLower(claims.Address))
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

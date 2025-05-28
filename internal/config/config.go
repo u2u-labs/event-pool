@@ -24,6 +24,7 @@ type Config struct {
 	ChainId         int    `mapstructure:"chain_id"`
 	LogLevel        string `mapstructure:"log_level"`
 	JwtSecretPath   string `mapstructure:"jwt_secret_path"`
+	JwtSecret       string
 }
 
 type ServerConfig struct {

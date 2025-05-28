@@ -12,6 +12,7 @@ import (
 	"time"
 
 	ws2 "event-pool/helper/ws"
+	"event-pool/internal/jwt"
 	pb "event-pool/internal/proto"
 	"event-pool/network/common"
 	"event-pool/pkg/ethereum"
@@ -40,7 +41,7 @@ func (s *Server) RequestTokenHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.GenerateJWT(body.Address, body.Duration)
+	token, err := jwt.GenerateJWT(body.Address, body.Duration, s.jwtSecret)
 	if err != nil {
 		s.logger.Infoln(fmt.Sprintf("Unable to generate JWT, %s", err.Error()))
 		http.Error(w, "Unable to generate JWT", http.StatusInternalServerError)
@@ -67,12 +68,6 @@ var wsUpgrader = websocket.Upgrader{
 }
 
 func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
-	secret := req.Header.Get("X-Secret")
-	if s.gatewaySecret != nil && secret != string(s.gatewaySecret) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	token := req.URL.Query().Get("token")
 	claims, err := s.ValidateJWT(token)
 	if err != nil {
@@ -254,11 +249,6 @@ func (s *Server) HandleWs(w http.ResponseWriter, req *http.Request) {
 func (s *Server) DisconnectWs(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	secret := req.Header.Get("X-Secret")
-	if s.gatewaySecret != nil && secret != string(s.gatewaySecret) {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 

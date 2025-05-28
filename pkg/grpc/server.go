@@ -15,6 +15,7 @@ import (
 	nodestorage "event-pool/contracts/nodesstorage"
 	"event-pool/contracts/sessionreceipt"
 	crypto2 "event-pool/crypto"
+	"event-pool/internal/jwt"
 	pb "event-pool/internal/proto"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
@@ -24,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
@@ -101,7 +101,7 @@ func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, s
 	s.grpcServer = grpcServer
 
 	s.scheduler = NewSessionScheduler(func(token string, claims interface{}) {
-		s.submitSessionReceipt(token, claims.(*JwtClaims))
+		s.submitSessionReceipt(token, claims.(*jwt.JwtClaims))
 	})
 
 	return s
@@ -128,7 +128,7 @@ func (s *Server) GetMetrics() *sync.Map {
 }
 
 func (s *Server) RequestToken(ctx context.Context, req *pb.RequestTokenRequest) (*pb.RequestTokenResponse, error) {
-	token, err := s.GenerateJWT(req.Address, req.Duration)
+	token, err := jwt.GenerateJWT(req.Address, req.Duration, s.jwtSecret)
 	if err != nil {
 		s.logger.Errorw(fmt.Sprintf("Unable to generate JWT, %s", err.Error()))
 		return nil, status.Errorf(codes.Internal, "failed to generate JWT: %v", err)
@@ -436,22 +436,22 @@ func (s *Server) jwtUnaryInterceptor(skippedMethods map[string]bool) grpc.UnaryS
 		info *grpc.UnaryServerInfo,
 		handler grpc.UnaryHandler,
 	) (interface{}, error) {
-		if skippedMethods[info.FullMethod] {
-			return handler(ctx, req)
-		}
-
 		// Extract JWT token from metadata
 		md, ok := metadata.FromIncomingContext(ctx)
 		if !ok {
 			return nil, status.Error(codes.Unauthenticated, "Missing metadata")
 		}
 
-		secret := md["x-secret"]
-		if len(secret) == 0 {
-			return nil, status.Error(codes.Unauthenticated, "invalid x-secret")
-		}
-		if s.gatewaySecret != nil && secret[0] != string(s.gatewaySecret) {
-			return nil, status.Error(codes.Unauthenticated, "invalid x-secret")
+		if skippedMethods[info.FullMethod] {
+			secret := md["x-secret"]
+			if len(secret) == 0 {
+				return nil, status.Error(codes.Unauthenticated, "invalid x-secret")
+			}
+			if s.gatewaySecret != nil && secret[0] != string(s.gatewaySecret) {
+				return nil, status.Error(codes.Unauthenticated, "invalid x-secret")
+			}
+
+			return handler(ctx, req)
 		}
 
 		tokens := md["authorization"]
@@ -484,14 +484,6 @@ func (s *Server) jwtStreamInterceptor(skippedMethods map[string]bool) grpc.Strea
 			return status.Error(codes.Unauthenticated, "Missing metadata")
 		}
 
-		secret := md["x-secret"]
-		if len(secret) == 0 {
-			return status.Error(codes.Unauthenticated, "invalid x-secret")
-		}
-		if s.gatewaySecret != nil && secret[0] != string(s.gatewaySecret) {
-			return status.Error(codes.Unauthenticated, "invalid x-secret")
-		}
-
 		tokens := md["authorization"]
 		if len(tokens) == 0 {
 			return status.Error(codes.Unauthenticated, "Invalid or missing token")
@@ -508,7 +500,7 @@ func (s *Server) jwtStreamInterceptor(skippedMethods map[string]bool) grpc.Strea
 }
 
 // submitSessionReceipt handles submitting the session receipt data to the blockchain
-func (s *Server) submitSessionReceipt(token string, claims *JwtClaims) {
+func (s *Server) submitSessionReceipt(token string, claims *jwt.JwtClaims) {
 	// Load private key for signing
 	secretBytes, err := os.ReadFile(filepath.Join(viper.GetString("data_dir"), "consensus/validator.key"))
 	if err != nil {
@@ -608,47 +600,18 @@ func (s *Server) submitSessionReceipt(token string, claims *JwtClaims) {
 	}
 }
 
-type JwtClaims struct {
-	Address string `json:"address"`
-	jwt.RegisteredClaims
-}
-
-// GenerateJWT creates a signed JWT token
-func (s *Server) GenerateJWT(address string, expiry int64) (string, error) {
-	claims := JwtClaims{
-		Address: address,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expiry) * time.Second)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return token.SignedString(s.jwtSecret)
-}
-
 // ValidateJWT parses and verifies a JWT token
-func (s *Server) ValidateJWT(tokenStr string) (*JwtClaims, error) {
-	if strings.HasPrefix(tokenStr, "Bearer ") {
-		tokenStr = strings.TrimPrefix(tokenStr, "Bearer ")
-	}
-
-	token, err := jwt.ParseWithClaims(tokenStr, &JwtClaims{}, func(token *jwt.Token) (interface{}, error) {
-		return s.jwtSecret, nil
-	})
-
-	if err != nil {
-		return nil, fmt.Errorf("invalid token: %w", err)
-	}
-
-	if claims, ok := token.Claims.(*JwtClaims); ok && token.Valid {
+func (s *Server) ValidateJWT(tokenStr string) (*jwt.JwtClaims, error) {
+	claims, err := jwt.ValidateJWT(tokenStr, s.jwtSecret, func(token string) error {
 		if err := s.rdb.Get(context.Background(), fmt.Sprintf("%s_%s", BLACKLISTED_TOKEN_KEY, tokenStr)).Err(); err == nil {
-			return nil, fmt.Errorf("token is invalid")
+			return fmt.Errorf("token is invalid")
 		}
-		return claims, nil
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("invalid token claims")
+	return claims, nil
 }
 
 func VerifySignature(fromAddress, message, signatureHex string) bool {
