@@ -475,13 +475,21 @@ func (s *Server) jwtStreamInterceptor(skippedMethods map[string]bool) grpc.Strea
 		info *grpc.StreamServerInfo,
 		handler grpc.StreamHandler,
 	) error {
-		if skippedMethods[info.FullMethod] {
-			return handler(srv, ss)
-		}
-
 		md, ok := metadata.FromIncomingContext(ss.Context())
 		if !ok {
 			return status.Error(codes.Unauthenticated, "Missing metadata")
+		}
+
+		if skippedMethods[info.FullMethod] {
+			secret := md["x-secret"]
+			if len(secret) == 0 {
+				return status.Error(codes.Unauthenticated, "invalid x-secret")
+			}
+			if s.gatewaySecret != nil && secret[0] != string(s.gatewaySecret) {
+				return status.Error(codes.Unauthenticated, "invalid x-secret")
+			}
+
+			return handler(srv, ss)
 		}
 
 		tokens := md["authorization"]
