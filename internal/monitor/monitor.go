@@ -21,6 +21,7 @@ import (
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
 	"event-pool/types"
+	"github.com/redis/go-redis/v9"
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
@@ -30,6 +31,7 @@ import (
 type Monitor struct {
 	ethClients         map[int]*ethereum.Client
 	db                 *db.PrismaClient
+	rdb                *redis.Client
 	grpcServer         *grpc.Server
 	mu                 sync.RWMutex
 	monitors           map[string]context.CancelFunc
@@ -40,10 +42,11 @@ type Monitor struct {
 	logger             *zap.SugaredLogger
 }
 
-func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, grpcServer *grpc.Server, logger *zap.SugaredLogger) *Monitor {
+func NewMonitor(ethClients map[int]*ethereum.Client, db *db.PrismaClient, rdb *redis.Client, grpcServer *grpc.Server, logger *zap.SugaredLogger) *Monitor {
 	return &Monitor{
 		ethClients:         ethClients,
 		db:                 db,
+		rdb:                rdb,
 		grpcServer:         grpcServer,
 		monitors:           make(map[string]context.CancelFunc),
 		lastBlocks:         make(map[int]uint64),
@@ -295,15 +298,23 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 
 					if len(logs) > 0 {
 						// add query logs as txn to the chain
-						err = m.SendTx(ctx, types.FilterLogsParams{
+						filterLogs := types.FilterLogsParams{
 							FromBlock:       big.NewInt(int64(fromBlock)),
 							ToBlock:         big.NewInt(int64(toBlock)),
 							ContractAddress: ethereum.HexToAddress(address),
 							EventSignature:  ethereum.HexToHash(eventSignature),
 							ChainId:         int(chainID),
-						})
+						}
+						err = m.SendTx(ctx, filterLogs)
 						if err != nil {
 							m.logger.Infof("ERROR: Failed to send transaction: %v", err)
+						}
+						// mark it as processed
+						if m.rdb != nil {
+							err = m.rdb.Set(ctx, fmt.Sprintf("processed_filter_logs_%s", filterLogs.ComputeHash()), "1", 10*time.Minute).Err()
+							if err != nil {
+								m.logger.Infof("ERROR: Failed to set processed logs: %v", err)
+							}
 						}
 					}
 
@@ -376,6 +387,20 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 	}
 
 	return nil
+}
+
+func (m *Monitor) ShouldProcessFilterLogs(filterLogs types.FilterLogsParams) bool {
+	// Check if the filter logs have already been processed
+	if m.rdb != nil {
+		processed, err := m.rdb.Get(context.Background(), fmt.Sprintf("processed_filter_logs_%s", filterLogs.ComputeHash())).Result()
+		if err != nil {
+			m.logger.Infof("ERROR: Failed to get processed logs: %v", err)
+		}
+		if processed == "1" {
+			return false
+		}
+	}
+	return true
 }
 
 func (m *Monitor) IsRunning() bool {

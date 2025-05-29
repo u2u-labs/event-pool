@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"event-pool/pkg/ethereum"
+	"github.com/redis/go-redis/v9"
 
 	"event-pool/blockchain"
 	"event-pool/chain"
@@ -189,13 +190,22 @@ func NewServer(config *Config) (*Server, error) {
 		ethClients[chainID] = client
 	}
 
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     config.RedisConfig.Addr,
+		Password: config.RedisConfig.Password,
+		DB:       config.RedisConfig.DB,
+	})
+	if err := rdb.Ping(context.Background()).Err(); err != nil {
+		return nil, fmt.Errorf("failed to connect to redis: %w", err)
+	}
+
 	cfg := config.Chain.Clone()
 	cfg.NodeStorageAddress = types.StringToAddress(config.NodeStorageAddress)
 	cfg.RpcInfo = &chain.RpcInfo{}
 	*cfg.RpcInfo = m.config.EthereumRpc.Chains[m.config.Chain.Params.ChainID]
 	cfg.Genesis.ChainId = uint64(m.config.Chain.Params.ChainID)
 	// blockchain object
-	m.blockchain, err = blockchain.NewBlockchain(logger, m.config.DataDir, cfg, nil, m.executor, signer, ethClients)
+	m.blockchain, err = blockchain.NewBlockchain(logger, m.config.DataDir, cfg, nil, m.executor, signer, ethClients, rdb)
 	if err != nil {
 		return nil, err
 	}

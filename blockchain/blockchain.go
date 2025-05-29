@@ -18,6 +18,7 @@ import (
 	"event-pool/state"
 	"event-pool/validators"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"event-pool/chain"
@@ -44,6 +45,7 @@ type Blockchain struct {
 	logger *zap.SugaredLogger // The logger object
 
 	sqlClient *db.PrismaClient
+	rdb       *redis.Client
 	db        storage.Storage // The database object
 	consensus Verifier
 	executor  Executor
@@ -99,6 +101,7 @@ func NewBlockchain(
 	executor Executor,
 	txSigner TxSigner,
 	ethClients map[int]*ethereum.Client,
+	rdb *redis.Client,
 ) (*Blockchain, error) {
 	b := &Blockchain{
 		logger:    logger.Named("blockchain"),
@@ -107,6 +110,7 @@ func NewBlockchain(
 		executor:  executor,
 		stream:    &eventStream{},
 		txSigner:  txSigner,
+		rdb:       rdb,
 	}
 
 	var (
@@ -143,7 +147,7 @@ func NewBlockchain(
 	}
 	b.rpcClient = client
 	b.nodeStorageAddress = config.NodeStorageAddress
-	mon := monitor.NewMonitor(ethClients, dbClient, nil, logger.Named("monitor"))
+	mon := monitor.NewMonitor(ethClients, dbClient, b.rdb, nil, logger.Named("monitor"))
 	b.monitor = mon
 
 	if err := b.initCaches(defaultCacheSize); err != nil {

@@ -86,7 +86,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, strings.TrimSpace(string(jwtSecret)), cfg.SessionContract, cfg.NodeContract, ethClients[cfg.ChainId], client, logger.Named("server"))
 
 	// Initialize monitor
-	mon := monitor.NewMonitor(ethClients, dbClient, grpcServer, logger.Named("monitor"))
+	mon := monitor.NewMonitor(ethClients, dbClient, client, grpcServer, logger.Named("monitor"))
 	grpcServer.GetMonitorLastBlock = mon.GetLastSyncedBlock
 
 	// Initialize worker

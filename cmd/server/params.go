@@ -172,5 +172,10 @@ func (p *serverParams) generateConfig() *server.Config {
 		NodeStorageAddress: p.rawConfig.NodeStorageAddress,
 		MonitorApiPort:     p.rawConfig.MonitorConfig.Port,
 		MonitorApiHost:     p.rawConfig.MonitorConfig.Host,
+		RedisConfig: &server.RedisConfig{
+			Addr:     p.rawConfig.RedisConfig.Addr,
+			Password: p.rawConfig.RedisConfig.Password,
+			DB:       p.rawConfig.RedisConfig.DB,
+		},
 	}
 }

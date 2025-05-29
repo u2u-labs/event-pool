@@ -221,7 +221,7 @@ func (t *Transition) apply(msg *types.Transaction) (any, error) {
 	}
 
 	// to skip if already processed this query
-	if !t.r.filterCache.Contains(params.ComputeHash()) {
+	if !t.r.filterCache.Contains(params.ComputeHash()) && t.FnGetMonitor().ShouldProcessFilterLogs(params) {
 		// Get logs for the block range
 		logs, err := client.FilterLogs(
 			t.ctx,
