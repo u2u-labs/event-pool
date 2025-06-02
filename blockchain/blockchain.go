@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -114,22 +115,22 @@ func NewBlockchain(
 	}
 
 	var (
-		db  storage.Storage
+		stg storage.Storage
 		err error
 	)
 
 	// Initialize database
-	dbClient, err := db2.NewClient()
+	dbClient, err := db2.NewClient(db.WithDatasourceURL(os.Getenv("DATABASE_URL")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
 	if dataDir == "" {
-		if db, err = memory.NewMemoryStorage(nil); err != nil {
+		if stg, err = memory.NewMemoryStorage(nil); err != nil {
 			return nil, err
 		}
 	} else {
-		if db, err = leveldb.NewLevelDBStorage(
+		if stg, err = leveldb.NewLevelDBStorage(
 			filepath.Join(dataDir, "blockchain"),
 			logger,
 		); err != nil {
@@ -137,7 +138,7 @@ func NewBlockchain(
 		}
 	}
 
-	b.db = db
+	b.db = stg
 	b.sqlClient = dbClient
 
 	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient, logger.Named("rpc"))

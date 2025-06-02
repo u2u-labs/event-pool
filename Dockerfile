@@ -14,6 +14,10 @@ COPY internal ./internal/
 # Download dependencies and generate Prisma client
 RUN go mod download
 RUN go install github.com/steebchen/prisma-client-go@latest
+
+# Build Prisma CLI binary
+RUN go build -o prisma-cli github.com/steebchen/prisma-client-go
+
 RUN go run github.com/steebchen/prisma-client-go generate
 
 # Copy rest of the source
@@ -27,17 +31,21 @@ RUN go build -ldflags="-w -s" -o event-pool
 FROM alpine:latest
 
 # Install only required runtime tools
-RUN apk --no-cache add ca-certificates
+RUN apk --no-cache add ca-certificates curl
 
 WORKDIR /app
 
-# Copy binary and entrypoint
+# Copy binary, Prisma CLI, and entrypoint
 COPY --from=builder /app/event-pool /app/event-pool
+COPY --from=builder /app/prisma-cli /app/prisma-cli
 COPY --from=builder /app/docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY --from=builder /app/prisma /app/prisma
 COPY --from=builder /app/pkg /app/pkg
 COPY --from=builder /app/data /app/data
 
-RUN chmod +x /app/docker-entrypoint.sh
+# Generate JWT secret during image build
+RUN LC_CTYPE=C tr -dc A-Za-z0-9 < /dev/urandom | head -c 32 > ./jwt_secret.key
+
+RUN chmod +x /app/docker-entrypoint.sh /app/prisma-cli
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]

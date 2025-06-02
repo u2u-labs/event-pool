@@ -17,6 +17,7 @@ import (
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
+	db2 "event-pool/prisma/db"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -66,7 +67,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	cfg.JwtSecret = string(jwtSecret)
 
 	// Initialize database
-	dbClient, err := db.NewClient()
+	dbClient, err := db.NewClient(db2.WithDatasourceURL(cfg.Database.URL))
 	if err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}

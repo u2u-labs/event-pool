@@ -63,6 +63,9 @@ func (p *serverParams) applyEnvironmentOverrides() {
 	if monitorHostsEnv := os.Getenv("MONITOR_HOST"); monitorHostsEnv != "" {
 		p.rawConfig.MonitorConfig.Host = monitorHostsEnv
 	}
+	if redisEnv := os.Getenv("REDIS__ADDR"); redisEnv != "" {
+		p.rawConfig.RedisConfig.Addr = redisEnv
+	}
 }
 
 func parseBootnodesEnv(bootnodesEnv string) []string {

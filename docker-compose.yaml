@@ -60,6 +60,11 @@ services:
         max-size: 300m
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
     entrypoint: ["/app/docker-entrypoint.sh"]
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   node:
     build:
