@@ -89,6 +89,10 @@ go run main.go serve
 go run main.go server --config config.yaml --grpc-address :10000 --libp2p :10006 --jsonrpc :10002
 ```
 
+### SDK client
+
+Check out [Event Catcher SDK](https://github.com/u2u-labs/event-catcher-sdk) for more information.
+
 ### Registering a Contract
 
 ```bash
