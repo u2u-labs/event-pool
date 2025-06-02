@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -9,16 +10,29 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig   `mapstructure:"server"`
-	Database DatabaseConfig `mapstructure:"database"`
-	Redis    RedisConfig    `mapstructure:"redis"`
-	Ethereum EthereumConfig `mapstructure:"ethereum"`
-	MQTT     MQTTConfig     `mapstructure:"mqtt"`
-	Asynq    AsynqConfig    `mapstructure:"asynq"`
-	Node     NodeConfig     `mapstructure:"node"`
+	Server          ServerConfig     `mapstructure:"server"`
+	GrpcServer      GrpcServerConfig `mapstructure:"grpc"`
+	Database        DatabaseConfig   `mapstructure:"database"`
+	Redis           RedisConfig      `mapstructure:"redis"`
+	Ethereum        EthereumConfig   `mapstructure:"ethereum"`
+	MQTT            MQTTConfig       `mapstructure:"mqtt"`
+	Asynq           AsynqConfig      `mapstructure:"asynq"`
+	Node            NodeConfig       `mapstructure:"node"`
+	SecretKey       string
+	SessionContract string `mapstructure:"session_receipt_address"`
+	NodeContract    string `mapstructure:"node_storage_address"`
+	ChainId         int    `mapstructure:"chain_id"`
+	LogLevel        string `mapstructure:"log_level"`
+	JwtSecretPath   string `mapstructure:"jwt_secret_path"`
+	JwtSecret       string
 }
 
 type ServerConfig struct {
+	Port int    `mapstructure:"port"`
+	Host string `mapstructure:"host"`
+}
+
+type GrpcServerConfig struct {
 	Port int    `mapstructure:"port"`
 	Host string `mapstructure:"host"`
 }
@@ -71,6 +85,8 @@ func Load() (*Config, error) {
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
 	viper.AddConfigPath("./config")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "__"))
+	viper.SetDefault("JSONRPC_HOST", "localhost")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -81,6 +97,7 @@ func Load() (*Config, error) {
 	if err := viper.Unmarshal(cfg); err != nil {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
+	cfg.SecretKey = viper.GetString("SECRET_KEY")
 
 	return cfg, nil
 }

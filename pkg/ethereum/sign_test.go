@@ -18,6 +18,7 @@ func TestSignTx(t *testing.T) {
 		ToBlock:         big.NewInt(10005),
 		ContractAddress: common.Address{0x1},
 		EventSignature:  common.Hash{0xab},
+		ChainId:         5,
 	}
 	input, err := json.Marshal(filter)
 	if err != nil {

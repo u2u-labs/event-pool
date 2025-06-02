@@ -1,10 +1,13 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
 	"net"
+	"os"
+	"strings"
 
 	"event-pool/cmd/server/config"
 
@@ -38,6 +41,9 @@ func (p *serverParams) initRawParams() error {
 	//	return err
 	//}
 
+	// apply bootnodes config from env
+	p.applyEnvironmentOverrides()
+
 	if p.isDevMode {
 		p.initDevMode()
 	}
@@ -45,6 +51,53 @@ func (p *serverParams) initRawParams() error {
 	p.initPeerLimits()
 
 	return p.initAddresses()
+}
+
+func (p *serverParams) applyEnvironmentOverrides() {
+	if bootnodesEnv := os.Getenv("BOOTNODES"); bootnodesEnv != "" {
+		bootnodes := parseBootnodesEnv(bootnodesEnv)
+		if len(bootnodes) > 0 {
+			p.rawConfig.NodeChain.Bootnodes = append(p.rawConfig.NodeChain.Bootnodes, bootnodes...)
+		}
+	}
+	if monitorHostsEnv := os.Getenv("MONITOR_HOST"); monitorHostsEnv != "" {
+		p.rawConfig.MonitorConfig.Host = monitorHostsEnv
+	}
+}
+
+func parseBootnodesEnv(bootnodesEnv string) []string {
+	// Handle both JSON array format and comma-separated format
+	if strings.HasPrefix(bootnodesEnv, "[") && strings.HasSuffix(bootnodesEnv, "]") {
+		// JSON array format
+		bootnodesEnv = strings.TrimSpace(bootnodesEnv)
+		// Remove the square brackets
+		bootnodesEnv = bootnodesEnv[1 : len(bootnodesEnv)-1]
+
+		// Handle JSON-style quoted strings
+		if strings.Contains(bootnodesEnv, "\"") || strings.Contains(bootnodesEnv, "'") {
+			var jsonArr []string
+			if err := json.Unmarshal([]byte("["+bootnodesEnv+"]"), &jsonArr); err == nil {
+				return jsonArr
+			}
+		}
+	}
+
+	// Fallback to simple comma-separated format
+	bootnodes := strings.Split(bootnodesEnv, ",")
+	// Clean up each entry
+	for i, node := range bootnodes {
+		bootnodes[i] = strings.TrimSpace(node)
+	}
+
+	// Filter out empty entries
+	var result []string
+	for _, node := range bootnodes {
+		if node != "" {
+			result = append(result, node)
+		}
+	}
+
+	return result
 }
 
 func (p *serverParams) initDataDirLocation() error {

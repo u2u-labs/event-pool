@@ -815,7 +815,8 @@ func TestSignerVerifyParentCommittedSeals(t *testing.T) {
 		{
 			name: "should return error if header doesn't have ParentCommittedSeals and must exist is true",
 			parentHeader: &types.Header{
-				Hash: types.BytesToHash(parentHeaderHash),
+				Hash:   types.BytesToHash(parentHeaderHash),
+				Number: 1,
 			},
 			header: &types.Header{
 				ExtraData: getTestExtraBytes(
@@ -855,7 +856,8 @@ func TestSignerVerifyParentCommittedSeals(t *testing.T) {
 		{
 			name: "should return error if VerifyCommittedSeals fails",
 			parentHeader: &types.Header{
-				Hash: types.BytesToHash(parentHeaderHash),
+				Hash:   types.BytesToHash(parentHeaderHash),
+				Number: 1,
 			},
 			header: &types.Header{
 				ExtraData: getTestExtraBytes(
@@ -875,7 +877,8 @@ func TestSignerVerifyParentCommittedSeals(t *testing.T) {
 		{
 			name: "should return ErrNotEnoughCommittedSeals if the number of signers is less than quorum",
 			parentHeader: &types.Header{
-				Hash: types.BytesToHash(parentHeaderHash),
+				Hash:   types.BytesToHash(parentHeaderHash),
+				Number: 1, // we skip block 0th for a hack way to resolve some problems
 			},
 			header: &types.Header{
 				ExtraData: getTestExtraBytes(

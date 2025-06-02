@@ -42,7 +42,7 @@ func (i *backendIBFT) IsValidBlock(proposal []byte) bool {
 		i.currentHooks,
 		true,
 	); err != nil {
-		i.logger.Error("block header verification failed", "err", err)
+		i.logger.Errorw("block header verification failed", "err", err)
 		return false
 	}
 

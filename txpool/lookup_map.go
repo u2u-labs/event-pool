@@ -9,7 +9,8 @@ import (
 // Lookup map used to find transactions present in the pool
 type lookupMap struct {
 	sync.RWMutex
-	all map[types.Hash]*types.Transaction
+	all        map[types.Hash]*types.Transaction
+	filterLogs map[types.Hash]struct{}
 }
 
 // add inserts the given transaction into the map. Returns false
@@ -21,8 +22,12 @@ func (m *lookupMap) add(tx *types.Transaction) bool {
 	if _, exists := m.all[tx.Hash]; exists {
 		return false
 	}
+	if _, exists := m.filterLogs[tx.InputHash]; exists {
+		return false
+	}
 
 	m.all[tx.Hash] = tx
+	m.filterLogs[tx.InputHash] = struct{}{}
 
 	return true
 }
@@ -35,6 +40,7 @@ func (m *lookupMap) remove(txs ...*types.Transaction) {
 	for _, tx := range txs {
 		delete(m.all, tx.Hash)
 	}
+	m.filterLogs = make(map[types.Hash]struct{})
 }
 
 // get returns the transaction associated with the given hash. [thread-safe]

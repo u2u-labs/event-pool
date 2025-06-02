@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"sync"
 
 	"event-pool/helper/hex"
+	ws2 "event-pool/helper/ws"
 	"event-pool/txpool/proto"
 	"event-pool/types"
+	"github.com/golang/protobuf/ptypes/any"
 	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
 	empty "google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -55,6 +55,30 @@ func (p *TxPool) AddTxn(ctx context.Context, raw *proto.AddTxnReq) (*proto.AddTx
 
 	return &proto.AddTxnResp{
 		TxHash: txn.Hash.String(),
+	}, nil
+}
+
+func (p *TxPool) RegisterContract(ctx context.Context, req *proto.GossipRegisterContractRequest) (*proto.GossipRegisterContractResponse, error) {
+	if len(req.Data) == 0 {
+		return nil, fmt.Errorf("data's field raw is empty")
+	}
+
+	// broadcast the transaction only if a topic
+	// subscription is present
+	if p.topic2 != nil {
+		tx := &proto.RegisterContractRequest{
+			Raw: &any.Any{
+				Value: []byte(req.Data),
+			},
+		}
+
+		if err := p.topic2.Publish(tx); err != nil {
+			p.logger.Error("failed to topic tx", "err", err)
+		}
+	}
+
+	return &proto.GossipRegisterContractResponse{
+		Message: "ok",
 	}, nil
 }
 
@@ -128,7 +152,7 @@ func (p *TxPool) HandleWs(w http.ResponseWriter, req *http.Request) {
 		}
 	}(ws)
 
-	wrapConn := &wsWrapper{ws: ws, logger: p.logger}
+	wrapConn := &ws2.WsWrapper{Ws: ws, Logger: p.logger}
 
 	p.logger.Info("Websocket connection established")
 	// Run the listen loop
@@ -173,38 +197,6 @@ func (p *TxPool) HandleWs(w http.ResponseWriter, req *http.Request) {
 			}
 		}
 	}
-}
-
-// wsWrapper is a wrapping object for the web socket connection and logger
-type wsWrapper struct {
-	sync.Mutex
-
-	ws       *websocket.Conn    // the actual WS connection
-	logger   *zap.SugaredLogger // module logger
-	filterID string             // filter ID
-}
-
-func (w *wsWrapper) SetFilterID(filterID string) {
-	w.filterID = filterID
-}
-
-func (w *wsWrapper) GetFilterID() string {
-	return w.filterID
-}
-
-// WriteMessage writes out the message to the WS peer
-func (w *wsWrapper) WriteMessage(messageType int, data []byte) error {
-	w.Lock()
-	defer w.Unlock()
-	writeErr := w.ws.WriteMessage(messageType, data)
-
-	if writeErr != nil {
-		w.logger.Error(
-			fmt.Sprintf("Unable to write WS message, %s", writeErr.Error()),
-		)
-	}
-
-	return writeErr
 }
 
 // isSupportedWSType returns a status indicating if the message type is supported

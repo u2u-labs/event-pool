@@ -3,36 +3,46 @@ package listener
 import (
 	"context"
 	"fmt"
-	"log"
 	"math/big"
+	"strings"
 	"sync"
 
 	"event-pool/pkg/ethereum"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type EventListener struct {
-	client     *ethereum.Client
-	chainID    int
-	contract   common.Address
-	eventSig   common.Hash
-	startBlock *big.Int
-	mu         sync.RWMutex
+	client        *ethereum.Client
+	chainID       int
+	contract      common.Address
+	eventSig      common.Hash
+	startBlock    *big.Int
+	mu            sync.RWMutex
+	rdb           *redis.Client
+	logger        *zap.SugaredLogger
+	backfillCache *sync.Map
 }
 
-func NewEventListener(client *ethereum.Client, chainID int, contract common.Address, eventSig common.Hash, startBlock *big.Int) *EventListener {
+func NewEventListener(client *ethereum.Client, chainID int, contract common.Address, eventSig common.Hash, startBlock *big.Int,
+	rdb *redis.Client, metrics *sync.Map, logger *zap.SugaredLogger) *EventListener {
 	return &EventListener{
-		client:     client,
-		chainID:    chainID,
-		contract:   contract,
-		eventSig:   eventSig,
-		startBlock: startBlock,
+		client:        client,
+		chainID:       chainID,
+		contract:      contract,
+		eventSig:      eventSig,
+		startBlock:    startBlock,
+		mu:            sync.RWMutex{},
+		rdb:           rdb,
+		backfillCache: metrics,
+		logger:        logger,
 	}
 }
 
 func (l *EventListener) Start(ctx context.Context, eventChan chan<- ethereum.Log) error {
-	log.Printf("Starting event listener for contract %s on chain %d", l.contract.Hex(), l.chainID)
+	l.logger.Infof("Starting event listener for contract %s on chain %d", l.contract.Hex(), l.chainID)
 
 	if err := l.backfill(ctx, eventChan); err != nil {
 		return fmt.Errorf("failed to backfill events: %w", err)
@@ -48,13 +58,15 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 		return fmt.Errorf("failed to get latest block: %w", err)
 	}
 
-	log.Printf("Starting backfill from block %s to %d for contract %s",
+	l.logger.Infof("Starting backfill from block %s to %d for contract %s",
 		l.startBlock.String(), latestBlock, l.contract.Hex())
 
 	// Process events in chunks to avoid timeout
 	chunkSize := big.NewInt(2000)
 	currentBlock := new(big.Int).Set(l.startBlock)
 	endBlock := big.NewInt(int64(latestBlock))
+
+	l.updateBackfillStatus(l.chainID, l.contract.Hex(), l.eventSig.Hex(), l.startBlock)
 
 	for currentBlock.Cmp(endBlock) < 0 {
 		select {
@@ -66,11 +78,10 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 				toBlock = endBlock
 			}
 
-			log.Printf("Processing blocks %s to %s for contract %s",
+			l.logger.Infof("Processing blocks %s to %s for contract %s",
 				currentBlock.String(), toBlock.String(), l.contract.Hex())
 
 			logs, err := l.client.FilterLogs(ctx, l.contract, l.eventSig, currentBlock, toBlock, l.chainID)
-
 			if err != nil {
 				return fmt.Errorf("failed to filter logs: %w", err)
 			}
@@ -78,22 +89,35 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 			for _, eventLog := range logs {
 				select {
 				case eventChan <- eventLog:
-					log.Printf("Sent event from block %d to channel", eventLog.BlockNumber)
+					l.logger.Infof("Sent event from block %d to channel", eventLog.BlockNumber)
 				case <-ctx.Done():
 					return ctx.Err()
 				}
 			}
 
 			currentBlock = new(big.Int).Add(toBlock, big.NewInt(1))
+
+			l.updateBackfillStatus(l.chainID, l.contract.Hex(), l.eventSig.Hex(), currentBlock)
 		}
 	}
 
-	log.Printf("Completed backfill for contract %s", l.contract.Hex())
+	l.clearBackfillStatus(l.chainID, l.contract.Hex(), l.eventSig.Hex())
+	l.logger.Infof("Completed backfill for contract %s", l.contract.Hex())
 	return nil
 }
 
+func (l *EventListener) updateBackfillStatus(chainId int, contractAddress string, eventSig string, currentBlock *big.Int) {
+	key := strings.ToLower(fmt.Sprintf("backfill_status:%d/%s/%s", chainId, contractAddress, eventSig))
+	l.backfillCache.Store(key, new(big.Int).Set(currentBlock))
+}
+
+func (l *EventListener) clearBackfillStatus(chainId int, contractAddress string, eventSig string) {
+	key := strings.ToLower(fmt.Sprintf("backfill_status:%d/%s/%s", chainId, contractAddress, eventSig))
+	l.backfillCache.Delete(key)
+}
+
 // func (l *EventListener) listen(ctx context.Context, eventChan chan<- ethereum.Log) error {
-// 	log.Printf("Starting to listen for new events for contract %s", l.contract.Hex())
+// 	l.logger.Infof()("Starting to listen for new events for contract %s", l.contract.Hex())
 
 // 	// Get the latest block number
 // 	latestBlock, err := l.client.GetLatestBlock()
@@ -101,7 +125,7 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 // 		return fmt.Errorf("failed to get latest block: %w", err)
 // 	}
 
-// 	log.Printf("Starting to poll for new events from block %d", latestBlock)
+// 	l.logger.Infof()("Starting to poll for new events from block %d", latestBlock)
 
 // 	// Use polling instead of WebSocket subscriptions
 // 	pollTicker := time.NewTicker(5 * time.Second)
@@ -117,13 +141,13 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 // 			// Get the latest block
 // 			currentBlock, err := l.client.GetLatestBlock()
 // 			if err != nil {
-// 				log.Printf("ERROR: Failed to get latest block: %v", err)
+// 				l.logger.Infof()("ERROR: Failed to get latest block: %v", err)
 // 				continue
 // 			}
 
 // 			// Check if we have new blocks to process
 // 			if currentBlock > lastProcessedBlock {
-// 				log.Printf("Processing new blocks %d to %d for contract %s",
+// 				l.logger.Infof()("Processing new blocks %d to %d for contract %s",
 // 					lastProcessedBlock+1, currentBlock, l.contract.Hex())
 
 // 				// Process blocks in batches to avoid timeouts
@@ -134,7 +158,7 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 // 						toBlock = currentBlock
 // 					}
 
-// 					log.Printf("Fetching logs for blocks %d to %d", fromBlock, toBlock)
+// 					l.logger.Infof()("Fetching logs for blocks %d to %d", fromBlock, toBlock)
 
 // 					// Get logs for the block range
 // 					logs, err := l.client.FilterLogs(
@@ -147,17 +171,17 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 // 					)
 
 // 					if err != nil {
-// 						log.Printf("ERROR: Failed to fetch logs: %v", err)
+// 						l.logger.Infof()("ERROR: Failed to fetch logs: %v", err)
 // 						continue
 // 					}
 
-// 					log.Printf("Found %d logs for blocks %d to %d", len(logs), fromBlock, toBlock)
+// 					l.logger.Infof()("Found %d logs for blocks %d to %d", len(logs), fromBlock, toBlock)
 
 // 					// Process each log
 // 					for _, eventLog := range logs {
 // 						select {
 // 						case eventChan <- eventLog:
-// 							log.Printf("Sent new event from block %d to channel", eventLog.BlockNumber)
+// 							l.logger.Infof()("Sent new event from block %d to channel", eventLog.BlockNumber)
 // 						case <-ctx.Done():
 // 							return ctx.Err()
 // 						}
@@ -167,7 +191,7 @@ func (l *EventListener) backfill(ctx context.Context, eventChan chan<- ethereum.
 // 					lastProcessedBlock = toBlock
 // 				}
 // 			} else {
-// 				log.Printf("No new blocks to process. Current: %d, Last: %d", currentBlock, lastProcessedBlock)
+// 				l.logger.Infof()("No new blocks to process. Current: %d, Last: %d", currentBlock, lastProcessedBlock)
 // 			}
 // 		}
 // 	}

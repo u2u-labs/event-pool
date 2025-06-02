@@ -1,9 +1,10 @@
 package api
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -12,6 +13,8 @@ import (
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
+	"github.com/spf13/viper"
+	"go.uber.org/zap"
 )
 
 type ContractHandler struct {
@@ -19,14 +22,16 @@ type ContractHandler struct {
 	worker     *worker.Worker
 	config     *config.Config
 	ethClients map[int]*ethereum.Client
+	logger     *zap.SugaredLogger
 }
 
-func NewContractHandler(db *db.PrismaClient, worker *worker.Worker, config *config.Config, ethClients map[int]*ethereum.Client) *ContractHandler {
+func NewContractHandler(db *db.PrismaClient, worker *worker.Worker, config *config.Config, ethClients map[int]*ethereum.Client, logger *zap.SugaredLogger) *ContractHandler {
 	return &ContractHandler{
 		db:         db,
 		worker:     worker,
 		config:     config,
 		ethClients: ethClients,
+		logger:     logger,
 	}
 }
 
@@ -45,24 +50,24 @@ type RegisterContractResponse struct {
 func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Request) {
 	var req RegisterContractRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		log.Printf("Error decoding request body: %v", err)
+		h.logger.Infof("Error decoding request body: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Received contract registration request: ChainID=%d, ContractAddr=%s, EventSig=%s, StartBlock=%d",
+	h.logger.Infof("Received contract registration request: ChainID=%d, ContractAddr=%s, EventSig=%s, StartBlock=%d",
 		req.ChainID, req.ContractAddr, req.EventSignature, req.StartBlock)
 
 	// Validate chain ID is supported
 	if _, ok := h.config.Ethereum.Chains[req.ChainID]; !ok {
-		log.Printf("Unsupported chain ID: %d", req.ChainID)
+		h.logger.Infof("Unsupported chain ID: %d", req.ChainID)
 		http.Error(w, fmt.Sprintf("Unsupported chain ID: %d", req.ChainID), http.StatusBadRequest)
 		return
 	}
 
 	// Validate contract address format
 	if !ethereum.IsValidAddress(req.ContractAddr) {
-		log.Printf("Invalid contract address format: %s", req.ContractAddr)
+		h.logger.Infof("Invalid contract address format: %s", req.ContractAddr)
 		http.Error(w, "Invalid contract address format", http.StatusBadRequest)
 		return
 	}
@@ -70,16 +75,16 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 	// Convert readable event signature to proper signature format
 	eventSig, err := ethereum.ParseEventSignature(req.EventSignature)
 	if err != nil {
-		log.Printf("Error parsing event signature: %v", err)
+		h.logger.Infof("Error parsing event signature: %v", err)
 		http.Error(w, fmt.Sprintf("Invalid event signature format: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Parsed event signature: %s -> %s", req.EventSignature, eventSig)
+	h.logger.Infof("Parsed event signature: %s -> %s", req.EventSignature, eventSig)
 
 	eventName, err := ethereum.ExtractEventName(req.EventSignature)
 	if err != nil {
-		log.Printf("Error extracting event name: %v", err)
+		h.logger.Infof("Error extracting event name: %v", err)
 		http.Error(w, fmt.Sprintf("Invalid event signature format: %v", err), http.StatusBadRequest)
 		return
 	}
@@ -94,18 +99,18 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 	).Exec(r.Context())
 
 	if err != nil {
-		log.Printf("Error creating contract in database: %v", err)
+		h.logger.Infof("Error creating contract in database: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to create contract: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Created contract in database with ID: %s", contract.ID)
+	h.logger.Infof("Created contract in database with ID: %s", contract.ID)
 
 	// Register the event ABI with the decoder if provided
 	if req.EventABI != "" {
 		client, ok := h.ethClients[req.ChainID]
 		if !ok {
-			log.Printf("No Ethereum client found for chain ID %d", req.ChainID)
+			h.logger.Infof("No Ethereum client found for chain ID %d", req.ChainID)
 			http.Error(w, fmt.Sprintf("No Ethereum client found for chain ID %d", req.ChainID), http.StatusInternalServerError)
 			return
 		}
@@ -113,10 +118,10 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 		// Register the event ABI with the decoder
 		err = client.RegisterEventABI(eventSig, req.EventABI)
 		if err != nil {
-			log.Printf("Error registering event ABI: %v", err)
+			h.logger.Infof("Error registering event ABI: %v", err)
 			// Continue anyway, as this is not critical
 		} else {
-			log.Printf("Registered event ABI for signature %s", eventSig)
+			h.logger.Infof("Registered event ABI for signature %s", eventSig)
 		}
 	}
 
@@ -130,21 +135,71 @@ func (h *ContractHandler) RegisterContract(w http.ResponseWriter, r *http.Reques
 
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Error marshaling backfill payload: %v", err)
+		h.logger.Infof("Error marshaling backfill payload: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to marshal payload: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Enqueueing backfill task with payload: %+v", payload)
+	h.logger.Infof("Enqueueing backfill task with payload: %+v", payload)
 
 	if err := h.worker.EnqueueTask(worker.TypeBackfill, payloadBytes); err != nil {
-		log.Printf("Error enqueueing backfill task: %v", err)
+		h.logger.Infof("Error enqueueing backfill task: %v", err)
 		http.Error(w, fmt.Sprintf("Failed to enqueue backfill task: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("Successfully enqueued backfill task for contract %s", req.ContractAddr)
+	h.logger.Infof("Successfully enqueued backfill task for contract %s", req.ContractAddr)
 
+	// send gossip contract registration to all peers
+	go func() {
+		reqBytes, err := json.Marshal(req)
+		if err != nil {
+			h.logger.Infoln("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+		gossipedPayload, err := json.Marshal(map[string]any{
+			"data": reqBytes,
+			"from": "",
+		})
+		if err != nil {
+			h.logger.Infoln("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+
+		// broadcast to all peers to register contract
+		resp, err := http.Post(
+			fmt.Sprintf("http://%s%s/txpool/contract/register",
+				viper.GetString("JSONRPC_HOST"),
+				viper.GetString("jsonrpc_addr")),
+			"application/json",
+			bytes.NewBuffer(gossipedPayload),
+		)
+		if err != nil {
+			h.logger.Infoln("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
+			h.logger.Infoln(fmt.Errorf("failed to send transaction: %s", resp.Status))
+			return
+		}
+
+		// read response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			h.logger.Infoln("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+		// parse response body
+		var response map[string]interface{}
+		err = json.Unmarshal(body, &response)
+		if err != nil {
+			h.logger.Infoln("failed to send gossip contract registration ", "err", err.Error())
+			return
+		}
+	}()
+
+	w.WriteHeader(http.StatusCreated)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(RegisterContractResponse{ID: contract.ID})
 }
@@ -190,7 +245,7 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	chainIdStr := r.URL.Query().Get("chainId")
 	txHash := r.URL.Query().Get("txHash")
 	pageStr := r.URL.Query().Get("take")
-	limitStr := r.URL.Query().Get("skip")
+	skipStr := r.URL.Query().Get("skip")
 
 	if contractAddress == "" {
 		http.Error(w, "contractAddress is required", http.StatusBadRequest)
@@ -218,15 +273,15 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if limitStr != "" {
-		if s, err := strconv.Atoi(limitStr); err == nil && s > 0 {
+	if skipStr != "" {
+		if s, err := strconv.Atoi(skipStr); err == nil && s >= 0 {
 			skip = s
 		} else {
-			http.Error(w, "invalid limit parameter", http.StatusBadRequest)
+			http.Error(w, "invalid skip parameter", http.StatusBadRequest)
 			return
 		}
 	}
-	fmt.Println("chainId", chainId)
+	h.logger.Infoln("chainId", chainId)
 	contract, err := h.db.Contract.FindFirst(
 		db.Contract.ChainID.Equals(chainId),
 		db.Contract.Address.Equals(strings.ToLower(contractAddress)),
@@ -268,5 +323,6 @@ func (h *ContractHandler) GetEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
 }

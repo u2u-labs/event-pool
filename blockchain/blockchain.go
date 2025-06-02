@@ -18,6 +18,7 @@ import (
 	"event-pool/state"
 	"event-pool/validators"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
 	"event-pool/chain"
@@ -44,6 +45,7 @@ type Blockchain struct {
 	logger *zap.SugaredLogger // The logger object
 
 	sqlClient *db.PrismaClient
+	rdb       *redis.Client
 	db        storage.Storage // The database object
 	consensus Verifier
 	executor  Executor
@@ -59,6 +61,7 @@ type Blockchain struct {
 	stream *eventStream // Event subscriptions
 
 	rpcClient          *ethereum.Client
+	ethClients         map[int]*ethereum.Client
 	nodeStorageAddress types.Address
 	monitor            *monitor.Monitor
 
@@ -97,6 +100,8 @@ func NewBlockchain(
 	consensus Verifier,
 	executor Executor,
 	txSigner TxSigner,
+	ethClients map[int]*ethereum.Client,
+	rdb *redis.Client,
 ) (*Blockchain, error) {
 	b := &Blockchain{
 		logger:    logger.Named("blockchain"),
@@ -105,6 +110,7 @@ func NewBlockchain(
 		executor:  executor,
 		stream:    &eventStream{},
 		txSigner:  txSigner,
+		rdb:       rdb,
 	}
 
 	var (
@@ -134,15 +140,14 @@ func NewBlockchain(
 	b.db = db
 	b.sqlClient = dbClient
 
-	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient)
+	client, err := ethereum.NewClient(config.RpcInfo.RpcUrl, b.config.Params.ChainID, int(config.RpcInfo.BlockTime), dbClient, logger.Named("rpc"))
+	b.ethClients = ethClients
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", b.config.Params.ChainID, err)
 	}
 	b.rpcClient = client
 	b.nodeStorageAddress = config.NodeStorageAddress
-	ethClients := make(map[int]*ethereum.Client)
-	ethClients[b.config.Params.ChainID] = client
-	mon := monitor.NewMonitor(ethClients, dbClient, nil)
+	mon := monitor.NewMonitor(ethClients, dbClient, b.rdb, nil, logger.Named("monitor"))
 	b.monitor = mon
 
 	if err := b.initCaches(defaultCacheSize); err != nil {
@@ -729,8 +734,8 @@ func (b *Blockchain) GetRpcClient() bind.ContractBackend {
 	return b.rpcClient.GetClient()
 }
 
-func (b *Blockchain) GetEthereumClient() *ethereum.Client {
-	return b.rpcClient
+func (b *Blockchain) GetEthereumClient(chainId int) *ethereum.Client {
+	return b.ethClients[chainId]
 }
 
 func (b *Blockchain) GetMonitor() *monitor.Monitor {

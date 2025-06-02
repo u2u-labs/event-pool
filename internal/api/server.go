@@ -4,25 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"net"
 	"net/http"
 	"strings"
+	"time"
 
 	"event-pool/internal/config"
+	"event-pool/internal/jwt"
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
+	"github.com/gorilla/mux"
+	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 )
 
 type Server struct {
 	config     *config.Config
 	db         *db.PrismaClient
+	rdb        *redis.Client
 	worker     *worker.Worker
 	grpcServer *grpc.Server
 	ethClients map[int]*ethereum.Client
 	monitor    *monitor.Monitor
+	logger     *zap.SugaredLogger
 }
 
 // MonitorStatus represents the current status of the monitor
@@ -46,7 +53,7 @@ func (s *Server) GetActiveContracts(ctx context.Context) ([]db.ContractModel, er
 	return s.db.Contract.FindMany().Exec(ctx)
 }
 
-func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor) *Server {
+func NewServer(config *config.Config, db *db.PrismaClient, rdb *redis.Client, worker *worker.Worker, ethClients map[int]*ethereum.Client, grpcServer *grpc.Server, mon *monitor.Monitor, logger *zap.SugaredLogger) *Server {
 	// grpcServer := grpc.NewServer()
 	// Create monitor
 	// mon := monitor.NewMonitor(ethClients, db, grpcServer)
@@ -54,10 +61,12 @@ func NewServer(config *config.Config, db *db.PrismaClient, worker *worker.Worker
 	return &Server{
 		config:     config,
 		db:         db,
+		rdb:        rdb,
 		worker:     worker,
 		grpcServer: grpcServer,
 		ethClients: ethClients,
 		monitor:    mon,
+		logger:     logger,
 	}
 }
 
@@ -73,11 +82,11 @@ func (s *Server) StartMonitor() error {
 func (s *Server) Stop() {
 	if s.monitor != nil {
 		s.monitor.Stop()
-		log.Println("Monitor stopped")
+		s.logger.Infoln("Monitor stopped")
 	}
 	if s.grpcServer != nil {
 		s.grpcServer.Stop()
-		log.Println("GRPC server stopped")
+		s.logger.Infoln("GRPC server stopped")
 	}
 }
 
@@ -86,13 +95,28 @@ func (s *Server) Start() error {
 	if err := s.StartMonitor(); err != nil {
 		return fmt.Errorf("failed to start monitor: %w", err)
 	}
-	log.Printf("Monitor started successfully")
+	s.logger.Infof("Monitor started successfully")
+
+	go func() {
+		if err := s.grpcServer.Start(s.config.GrpcServer.Port); err != nil {
+			s.logger.Errorf("Failed to start grpc server: %v", err)
+		}
+	}()
+	s.logger.Infof("gRPC server started successfully on port %d", s.config.GrpcServer.Port)
 
 	// Create handlers
-	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients)
+	contractHandler := NewContractHandler(s.db, s.worker, s.config, s.ethClients, s.logger.Named("contract"))
+
+	httpMux := mux.NewRouter()
+	httpMux.Use(s.loggingMiddleware)
+	httpMux.Use(allowCORS)
+
+	authRoutes := httpMux.NewRoute().Subrouter()
+	authRoutes.Use(authMiddleware(s.config.JwtSecret))
+	authRoutes.Use(s.successBasedRateLimitMiddleware(100000, time.Hour)) // 100000 requests per hour
 
 	// Set up routes
-	http.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			contractHandler.RegisterContract(w, r)
@@ -104,22 +128,15 @@ func (s *Server) Start() error {
 	})
 
 	// events query endpoint
-	http.HandleFunc("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-
-		contractHandler.GetEvents(w, r)
-	})
+	authRoutes.HandleFunc("/api/v1/events", contractHandler.GetEvents).Methods(http.MethodGet)
 
 	// Fix the incomplete handler
-	http.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/", func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "API endpoint not found", http.StatusNotFound)
 	})
 
 	// Add monitor status endpoint
-	http.HandleFunc("/api/v1/monitor/status", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/monitor/status", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -130,7 +147,7 @@ func (s *Server) Start() error {
 	})
 
 	// Add MQTT subscription endpoint
-	http.HandleFunc("/api/v1/subscribe", func(w http.ResponseWriter, r *http.Request) {
+	httpMux.HandleFunc("/api/v1/subscribe", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -170,8 +187,77 @@ func (s *Server) Start() error {
 		})
 	})
 
+	httpMux.HandleFunc("/api/v1/token", s.grpcServer.RequestTokenHandler)
+	httpMux.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
+	httpMux.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
+	httpMux.HandleFunc("/api/v1/status/{chainId}/{address}/{eventName}", s.grpcServer.GetContractStatus).Methods("GET")
+	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	// with cors
+	srv := &http.Server{
+		Handler:           httpMux,
+		ReadHeaderTimeout: 60 * time.Second,
+	}
+
 	// Start the server
 	addr := fmt.Sprintf("%s:%d", s.config.Server.Host, s.config.Server.Port)
-	log.Printf("Starting server on %s", addr)
-	return http.ListenAndServe(addr, nil)
+	lis, err := net.Listen("tcp", addr)
+	if err != nil {
+		return err
+	}
+
+	s.logger.Infof("Starting server on %s", addr)
+	return srv.Serve(lis)
+}
+
+func (s *Server) loggingMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, r)
+		duration := time.Since(start)
+
+		s.logger.Infow("incoming request",
+			"remote", r.RemoteAddr,
+			"method", r.Method,
+			"path", r.URL.Path,
+			"duration", duration,
+		)
+	})
+}
+
+func allowCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == "OPTIONS" {
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func authMiddleware(jwtSecret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Get Authorization header
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				return
+			}
+
+			claims, err := jwt.ValidateJWT(authHeader, []byte(jwtSecret), nil)
+			if err != nil {
+				http.Error(w, "Invalid token", http.StatusUnauthorized)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), "address", strings.ToLower(claims.Address))
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }

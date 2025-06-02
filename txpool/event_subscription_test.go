@@ -146,6 +146,7 @@ func TestEventSubscription_ProcessedEvents(t *testing.T) {
 			if _, err := tests.RetryUntilTimeout(eventWaitCtx, func() (interface{}, bool) {
 				return nil, atomic.LoadInt64(&processed) < int64(testCase.expectedProcessed)
 			}); err != nil {
+				t.Logf("Events processed: %d", atomic.LoadInt64(&processed))
 				t.Fatalf("Unable to wait for events to be processed, %v", err)
 			}
 

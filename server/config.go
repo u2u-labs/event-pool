@@ -39,6 +39,9 @@ type Config struct {
 
 	EthereumRpc        *EthereumRpc
 	NodeStorageAddress string
+	MonitorApiPort     string
+	MonitorApiHost     string
+	RedisConfig        *RedisConfig
 }
 
 type EthereumRpc struct {
@@ -56,4 +59,10 @@ type JSONRPC struct {
 	AccessControlAllowOrigin []string
 	BatchLengthLimit         uint64
 	BlockRangeLimit          uint64
+}
+
+type RedisConfig struct {
+	Addr     string
+	Password string
+	DB       int
 }

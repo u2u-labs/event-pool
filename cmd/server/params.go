@@ -128,6 +128,13 @@ func (p *serverParams) setRawDataDir(dataDir string) {
 	p.rawConfig.DataDir = dataDir
 }
 
+func (p *serverParams) setRawPrometheus(prometheusAddr string) {
+	if prometheusAddr == "" {
+		return
+	}
+	p.rawConfig.Telemetry.PrometheusAddr = prometheusAddr
+}
+
 func (p *serverParams) generateConfig() *server.Config {
 	lvl, _ := zapcore.ParseLevel(p.rawConfig.LogLevel)
 	return &server.Config{
@@ -163,5 +170,12 @@ func (p *serverParams) generateConfig() *server.Config {
 		EpochSize:          p.rawConfig.NodeChain.Params.EpochSize,
 		EthereumRpc:        p.rawConfig.EthereumRpc,
 		NodeStorageAddress: p.rawConfig.NodeStorageAddress,
+		MonitorApiPort:     p.rawConfig.MonitorConfig.Port,
+		MonitorApiHost:     p.rawConfig.MonitorConfig.Host,
+		RedisConfig: &server.RedisConfig{
+			Addr:     p.rawConfig.RedisConfig.Addr,
+			Password: p.rawConfig.RedisConfig.Password,
+			DB:       p.rawConfig.RedisConfig.DB,
+		},
 	}
 }

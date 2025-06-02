@@ -6,11 +6,29 @@ option go_package = "event-pool/proto";
 
 // EventService provides methods for streaming blockchain events
 service EventService {
+  // RequestToken requests a token for accessing the api
+  rpc RequestToken(RequestTokenRequest) returns (RequestTokenResponse) {}
+
   // StreamEvents streams blockchain events to clients
   rpc StreamEvents(StreamEventsRequest) returns (stream Event) {}
   
   // GetEvents retrieves a list of events based on the request parameters
   rpc GetEvents(GetEventsRequest) returns (GetEventsResponse) {}
+
+  // DisconnectStream disconnects a stream
+  rpc DisconnectStream(DisconnectStreamRequest) returns (DisconnectStreamResponse) {}
+}
+
+// RequestTokenRequest contains the parameters for requesting a token
+message RequestTokenRequest {
+  string address = 1;
+  int64 duration = 2;
+}
+
+// RequestTokenResponse contains the response for requesting a token
+message RequestTokenResponse {
+  string token = 1;
+  int64 expires_at = 2;
 }
 
 // StreamEventsRequest contains the parameters for subscribing to events
@@ -57,4 +75,14 @@ message Event {
   int64 block_number = 1;
   string tx_hash = 2;
   string data = 3;
+}
+
+// DisconnectStreamRequest contains the parameters for disconnecting a stream
+message DisconnectStreamRequest {}
+
+// DisconnectStreamResponse contains the response for disconnecting a stream
+message DisconnectStreamResponse {
+  bool success = 1;
+  string message = 2;
+  string error = 3;
 }

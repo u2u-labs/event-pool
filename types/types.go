@@ -4,6 +4,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"github.com/umbracle/fastrlp"
 	"math/big"
 	"strings"
 	"unicode"
@@ -218,4 +219,22 @@ type FilterLogsParams struct {
 	ToBlock         *big.Int
 	ContractAddress common.Address
 	EventSignature  common.Hash
+	ChainId         int
+	Hash            common.Hash
+}
+
+func (f *FilterLogsParams) ComputeHash() common.Hash {
+	arena := fastrlp.DefaultArenaPool.Get()
+	defer fastrlp.DefaultArenaPool.Put(arena)
+
+	vv := arena.NewArray()
+	vv.Set(arena.NewBigInt(f.FromBlock))
+	vv.Set(arena.NewBigInt(f.ToBlock))
+	vv.Set(arena.NewBytes(f.ContractAddress[:]))
+	vv.Set(arena.NewBytes(f.EventSignature[:]))
+	vv.Set(arena.NewUint(uint64(f.ChainId)))
+
+	buf := keccak.Keccak256Rlp(nil, vv)
+	f.Hash = common.BytesToHash(buf)
+	return f.Hash
 }

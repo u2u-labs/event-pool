@@ -27,6 +27,14 @@ type Config struct {
 	Database           *Database           `json:"database" yaml:"database"`
 	EthereumRpc        *server.EthereumRpc `json:"ethereum" yaml:"ethereum"`
 	NodeStorageAddress string              `json:"node_storage_address" yaml:"node_storage_address"`
+	MonitorConfig      *MonitorConfig      `json:"server" yaml:"server"`
+	RedisConfig        *RedisConfig        `json:"redis" yaml:"redis"`
+}
+
+type MonitorConfig struct {
+	Port    string `json:"port" yaml:"port"`
+	Host    string `json:"host" yaml:"host"`
+	Address string `json:"address" yaml:"address"`
 }
 
 // Telemetry holds the config details for metric services.
@@ -47,6 +55,12 @@ type Network struct {
 
 type Database struct {
 	Url string `json:"url" yaml:"url"`
+}
+
+type RedisConfig struct {
+	Addr     string `json:"addr" yaml:"addr"`
+	Password string `json:"password" yaml:"password"`
+	DB       int    `json:"db" yaml:"db"`
 }
 
 // Headers defines the HTTP response headers required to enable CORS.

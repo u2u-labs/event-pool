@@ -15,6 +15,7 @@ const (
 	JSONRPCFlag     = "jsonrpc"
 	Libp2pFlag      = "libp2p"
 	DataDirFlag     = "data-dir"
+	PrometheusFlag  = "prometheus"
 )
 
 // GRPCAddressFlagLEGACY Legacy flag that needs to be present to preserve backwards

@@ -5,10 +5,12 @@ go 1.23.2
 require (
 	github.com/btcsuite/btcd v0.22.3
 	github.com/eclipse/paho.mqtt.golang v1.4.3
-	github.com/ethereum/go-ethereum v1.15.7
+	github.com/ethereum/go-ethereum v1.15.10
 	github.com/go-kit/kit v0.13.0
+	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
+	github.com/gorilla/mux v1.8.1
 	github.com/gorilla/websocket v1.5.3
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.7.0
 	github.com/hashicorp/go-immutable-radix v1.3.1
