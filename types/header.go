@@ -16,6 +16,7 @@ type Header struct {
 	Number     uint64  `json:"number"`
 	Timestamp  uint64  `json:"timestamp"`
 	ExtraData  []byte  `json:"extraData"`
+	SideHead   uint64  `json:"sideHead"` // latest known side chain block height
 }
 
 // headerJSON represents a block header used for json calls
@@ -28,6 +29,7 @@ type headerJSON struct {
 	Number     uint64  `json:"number"`
 	Timestamp  uint64  `json:"timestamp"`
 	ExtraData  []byte  `json:"extraData"`
+	SideHead   uint64  `json:"sideHead"`
 }
 
 func (h *Header) MarshalJSON() ([]byte, error) {
@@ -41,6 +43,7 @@ func (h *Header) MarshalJSON() ([]byte, error) {
 	header.Number = h.Number
 	header.Timestamp = h.Timestamp
 	header.ExtraData = h.ExtraData
+	header.SideHead = h.SideHead
 
 	return json.Marshal(&header)
 }
@@ -59,6 +62,7 @@ func (h *Header) UnmarshalJSON(input []byte) error {
 	h.Number = header.Number
 	h.Timestamp = header.Timestamp
 	h.ExtraData = header.ExtraData
+	h.SideHead = header.SideHead
 
 	return nil
 }

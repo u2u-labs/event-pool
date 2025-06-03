@@ -82,8 +82,8 @@ func (h *Header) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
 		return err
 	}
 
-	if len(elems) < 7 {
-		return fmt.Errorf("incorrect number of elements to decode header, expected 7 but found %d", len(elems))
+	if len(elems) < 8 {
+		return fmt.Errorf("incorrect number of elements to decode header, expected 8 but found %d", len(elems))
 	}
 
 	// parentHash
@@ -137,6 +137,12 @@ func (h *Header) UnmarshalRLPFrom(p *fastrlp.Parser, v *fastrlp.Value) error {
 	if h.ExtraData, err = elems[6].GetBytes(h.ExtraData[:0]); err != nil {
 		return err
 	}
+	// side head
+	sh, err := elems[7].GetUint64()
+	if err != nil {
+		return err
+	}
+	h.SideHead = sh
 
 	// compute the hash after the decoding
 	h.ComputeHash()

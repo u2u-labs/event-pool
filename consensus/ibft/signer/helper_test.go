@@ -21,7 +21,7 @@ var (
 		ExtraData:  crypto.Keccak256([]byte{0x13}),
 	}
 
-	testHeaderHashHex = "0xcefca943490d6398f44aab182d80cf5a4c489d953584d88aff47760722ddfb73"
+	testHeaderHashHex = "0xd72807308cdfcb9c5a214ae044607a89498130a881fa97c643b9aed54fe209bb"
 )
 
 func newTestECDSAKey(t *testing.T) (*ecdsa.PrivateKey, []byte) {

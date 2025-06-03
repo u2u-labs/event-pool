@@ -55,6 +55,7 @@ func calculateHeaderHash(h *types.Header) types.Hash {
 	vv.Set(arena.NewUint(h.Number))
 	vv.Set(arena.NewUint(h.Timestamp))
 	vv.Set(arena.NewBytes(h.ExtraData))
+	vv.Set(arena.NewUint(h.SideHead))
 
 	buf := keccak.Keccak256Rlp(nil, vv)
 

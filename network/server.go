@@ -376,7 +376,7 @@ func (s *Server) runDial() {
 		default:
 		}
 	}); err != nil {
-		s.logger.Error(
+		s.logger.Errorw(
 			"Cannot instantiate an event subscription for the dial manager",
 			"err",
 			err,
@@ -544,10 +544,10 @@ func (s *Server) updateBootnodeConnCount(peerID peer.ID, delta int64) {
 // DisconnectFromPeer disconnects the networking server from the specified peer
 func (s *Server) DisconnectFromPeer(peer peer.ID, reason string) {
 	if s.host.Network().Connectedness(peer) == network.Connected {
-		s.logger.Info(fmt.Sprintf("Closing connection to peer [%s] for reason [%s]", peer.String(), reason))
+		s.logger.Infow(fmt.Sprintf("Closing connection to peer [%s] for reason [%s]", peer.String(), reason))
 
 		if closeErr := s.host.Network().ClosePeer(peer); closeErr != nil {
-			s.logger.Error(fmt.Sprintf("Unable to gracefully close peer connection, %v", closeErr))
+			s.logger.Errorw(fmt.Sprintf("Unable to gracefully close peer connection, %v", closeErr))
 		}
 	}
 }
@@ -580,7 +580,7 @@ func (s *Server) JoinPeer(rawPeerMultiaddr string) error {
 
 // joinPeer creates a new dial task for the peer (for async joining)
 func (s *Server) joinPeer(peerInfo *peer.AddrInfo) {
-	s.logger.Info("Join request", "addr", peerInfo.String())
+	s.logger.Infow("Join request", "addr", peerInfo.String())
 
 	// This method can be completely refactored to support some kind of active
 	// feedback information on the dial status, and not just asynchronous updates.

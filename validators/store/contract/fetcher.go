@@ -2,6 +2,7 @@ package contract
 
 import (
 	"fmt"
+	"math/big"
 
 	nodestorage "event-pool/contracts/nodesstorage"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -18,10 +19,11 @@ func FetchValidators(
 	from types.Address,
 	to types.Address,
 	client bind.ContractBackend,
+	height uint64,
 ) (validators.Validators, error) {
 	switch validatorType {
 	case validators.ECDSAValidatorType:
-		return FetchECDSAValidators(from, to, client)
+		return FetchECDSAValidators(from, to, client, height)
 	}
 
 	return nil, fmt.Errorf("unsupported validator type: %s", validatorType)
@@ -32,13 +34,15 @@ func FetchECDSAValidators(
 	from types.Address,
 	to types.Address,
 	client bind.ContractBackend,
+	height uint64,
 ) (validators.Validators, error) {
 	ns, err := nodestorage.NewNodesStorage(common.Address(to), client)
 	if err != nil {
 		return nil, err
 	}
 	valAddrs, err := ns.GetValidNodes(&bind.CallOpts{
-		From: common.Address(from),
+		From:        common.Address(from),
+		BlockNumber: big.NewInt(int64(height)),
 	})
 	if err != nil {
 		return nil, err

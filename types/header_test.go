@@ -23,7 +23,8 @@ func TestHeader_JSON(t *testing.T) {
 		  "creator": "0x1800000000000000000000000000000000000000",
 		  "number": 1,
 		  "timestamp": 199920,
-		  "extraData": "Cg=="
+		  "extraData": "Cg==",
+		  "sideHead": 5000000
 		}`
 		header = Header{
 			Hash:       Hash{0x8},
@@ -34,6 +35,7 @@ func TestHeader_JSON(t *testing.T) {
 			Number:     1,
 			Timestamp:  199920,
 			ExtraData:  []byte{0xa},
+			SideHead:   5000000,
 		}
 		rg = regexp.MustCompile(`(\t|\n| )+`)
 	)
