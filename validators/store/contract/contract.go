@@ -78,7 +78,12 @@ func (s *ContractValidatorStore) GetValidatorsByHeight(
 		return cachedValidators, nil
 	}
 
-	fetchedValidators, err := FetchValidators(validatorType, types.ZeroAddress, s.blockchain.GetNodeStorageAddress(), s.blockchain.GetRpcClient())
+	header, ok := s.blockchain.GetHeaderByNumber(height)
+	if !ok {
+		return nil, fmt.Errorf("header not found at %d", height)
+	}
+
+	fetchedValidators, err := FetchValidators(validatorType, types.ZeroAddress, s.blockchain.GetNodeStorageAddress(), s.blockchain.GetRpcClient(), header.SideHead)
 	if err != nil {
 		return nil, err
 	}
