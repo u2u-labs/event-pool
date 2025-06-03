@@ -658,6 +658,7 @@ func (b *Blockchain) WriteBlock(block *types.Block, source string) error {
 
 	logArgs := []any{
 		"number", header.Number,
+		"current_canon_chain", header.SideHead,
 		"hash", header.Hash,
 		"parent", header.ParentHash,
 	}

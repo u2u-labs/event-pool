@@ -86,7 +86,7 @@ func (i *backendIBFT) InsertBlock(
 
 	i.updateMetrics(newBlock)
 
-	i.logger.Infow(
+	i.logger.Debugw(
 		"block committed",
 		"number", newBlock.Number(),
 		"hash", newBlock.Hash(),
@@ -183,7 +183,7 @@ func (i *backendIBFT) buildBlock(parent *types.Header) (*types.Block, error) {
 	// is sealed after all the committed seals
 	block.Header.ComputeHash()
 
-	i.logger.Infow("build block", "number", header.Number)
+	i.logger.Debugw("build block", "number", header.Number)
 
 	return block, nil
 }
@@ -199,7 +199,7 @@ func (i *backendIBFT) NewHeader(parent *types.Header) (*types.Header, error) {
 
 	// get side head
 	if header.Number%common.SideHeadSyncInterval == 0 || header.Number <= 1 {
-		sideHead, err := i.blockchain.GetEthereumClient().GetLatestBlock()
+		sideHead, err := i.blockchain.GetEthereumClient(int(header.ChainId)).GetLatestBlock()
 		if err != nil {
 			return nil, err
 		}
@@ -290,7 +290,7 @@ func (i *backendIBFT) writeTransactions(
 	)
 
 	defer func() {
-		i.logger.Infow(
+		i.logger.Debugw(
 			"executed txs",
 			"successful", successful,
 			"failed", failed,
