@@ -401,6 +401,14 @@ func (s *Server) setupHTTP() error {
 		return err
 	}
 
+	err = gwMux.HandlePath("GET", "/", func(w http.ResponseWriter, r *http.Request, pathParams map[string]string) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+	if err != nil {
+		return err
+	}
+
 	// Optionally wrap with custom routes like /health
 	httpMux := http.NewServeMux()
 	httpMux.Handle("/", gwMux)
