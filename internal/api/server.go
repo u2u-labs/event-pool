@@ -195,6 +195,10 @@ func (s *Server) Start() error {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("ok"))
 	})
+	httpMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
 
 	// with cors
 	srv := &http.Server{
