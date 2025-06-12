@@ -41,7 +41,6 @@ COPY --from=builder /app/prisma-cli /app/prisma-cli
 COPY --from=builder /app/docker-entrypoint.sh /app/docker-entrypoint.sh
 COPY --from=builder /app/prisma /app/prisma
 COPY --from=builder /app/pkg /app/pkg
-COPY --from=builder /app/data /app/data
 
 # Generate JWT secret during image build
 RUN LC_CTYPE=C tr -dc A-Za-z0-9 < /dev/urandom | head -c 32 > ./jwt_secret.key

@@ -2,32 +2,22 @@ package grpc
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"math/big"
 	"net"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	nodestorage "event-pool/contracts/nodesstorage"
-	"event-pool/contracts/sessionreceipt"
-	crypto2 "event-pool/crypto"
 	"event-pool/internal/jwt"
 	pb "event-pool/internal/proto"
 	"event-pool/pkg/ethereum"
 	"event-pool/prisma/db"
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	common2 "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -101,7 +91,6 @@ func NewServer(db *db.PrismaClient, gatewaySecretKey string, jwtSecret string, s
 	s.grpcServer = grpcServer
 
 	s.scheduler = NewSessionScheduler(func(token string, claims interface{}) {
-		s.submitSessionReceipt(token, claims.(*jwt.JwtClaims))
 	})
 
 	return s
@@ -229,7 +218,6 @@ func (s *Server) StreamEvents(req *pb.StreamEventsRequest, stream pb.EventServic
 		case <-timer.C:
 			s.logger.Infoln("Connection expired")
 			cleanDisconnect = true // This is an expected disconnect
-			go s.submitSessionReceipt(token, claims)
 			return nil
 		case <-ctx.Done():
 			s.logger.Infoln("gRPC stream terminated by server")
@@ -419,9 +407,6 @@ func (s *Server) DisconnectStream(ctx context.Context, req *pb.DisconnectStreamR
 
 	s.logger.Infof("Disconnected client with address %s\n", claims.Address)
 
-	// Submit session receipt asynchronously
-	go s.submitSessionReceipt(token, claims)
-
 	// Return success response
 	return &pb.DisconnectStreamResponse{
 		Success: true,
@@ -504,107 +489,6 @@ func (s *Server) jwtStreamInterceptor(skippedMethods map[string]bool) grpc.Strea
 
 		s.logger.Infow("Stream connected", "addr", claims.Address, "method", info.FullMethod)
 		return handler(srv, ss)
-	}
-}
-
-// submitSessionReceipt handles submitting the session receipt data to the blockchain
-func (s *Server) submitSessionReceipt(token string, claims *jwt.JwtClaims) {
-	// Load private key for signing
-	secretBytes, err := os.ReadFile(filepath.Join(viper.GetString("data_dir"), "consensus/validator.key"))
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error reading validator key: %s", err.Error()))
-		return
-	}
-	privateKey, err := crypto2.BytesToECDSAPrivateKey(secretBytes)
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error converting validator key to ECDSA: %s", err.Error()))
-		return
-	}
-
-	addr := crypto.PubkeyToAddress(privateKey.PublicKey)
-	nodeStorage, err := nodestorage.NewNodesStorage(common2.HexToAddress(s.nodeContract), s.client.GetClient())
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error connecting to node storage: %s", err.Error()))
-		return
-	}
-	isValid, err := nodeStorage.IsValidNode(nil, addr)
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error validating node address: %s", err.Error()))
-		return
-	}
-	if !isValid {
-		s.logger.Infoln(fmt.Sprintf("Invalid node address: %s", addr))
-		return
-	}
-
-	// Create a new transactor with the private key
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(int64(s.client.GetChainId())))
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error creating transactor: %s", err.Error()))
-		return
-	}
-
-	// Get current gas price
-	gasPrice, err := s.client.GetClient().SuggestGasPrice(context.Background())
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error getting gas price: %s", err.Error()))
-		return
-	}
-
-	// Set transaction parameters
-	auth.GasPrice = gasPrice
-	auth.GasLimit = uint64(3000000) // Set appropriate gas limit
-
-	sessionReceipt, err := sessionreceipt.NewSessionReceipt(common2.HexToAddress(s.sessionContract), s.client.GetClient())
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
-		return
-	}
-
-	nonce, err := sessionReceipt.GetNonce(nil, common2.HexToAddress(claims.Address))
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error getting nonce: %s", err.Error()))
-		return
-	}
-
-	totalBytesServed, err := s.rdb.Get(context.Background(), fmt.Sprintf("%s_%s", USAGE_BYTES_KEY, token)).Int64()
-	if errors.Is(err, redis.Nil) {
-		s.logger.Infow("User byte count key does not exist", "addr", claims.Address)
-		totalBytesServed = 0
-		return
-	} else if err != nil {
-		s.logger.Errorw("Error fetching total bytes served", "err", err.Error(), "addr", claims.Address)
-		return
-	}
-
-	// Call CreateSessionReceipt with the auth object to sign and send the transaction
-	tx, err := sessionReceipt.CreateSessionReceipt(
-		auth,
-		common2.HexToAddress(claims.Address),
-		big.NewInt(totalBytesServed),
-		common2.HexToAddress("0x0000000000000000000000000000000000000000"),
-		0,
-		nonce,
-	)
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error creating session receipt: %s", err.Error()))
-		return
-	}
-
-	s.logger.Infof("Session receipt transaction sent: %s\n", tx.Hash().Hex())
-
-	// Wait for the transaction to be mined
-	receipt, err := bind.WaitMined(context.Background(), s.client.GetClient(), tx)
-	if err != nil {
-		s.logger.Infoln(fmt.Sprintf("Error waiting for transaction to be mined: %s", err.Error()))
-		return
-	}
-
-	if receipt.Status == types.ReceiptStatusSuccessful {
-		s.logger.Infof("Session receipt transaction successful, block: %d\n", receipt.BlockNumber)
-		_ = s.rdb.Del(context.Background(), fmt.Sprintf("%s_%s", USAGE_BYTES_KEY, token)).Err()
-	} else {
-		s.logger.Infoln("Session receipt transaction failed")
 	}
 }
 
