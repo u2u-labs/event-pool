@@ -1,28 +1,20 @@
 package monitor
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
 	"math/big"
-	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"sync"
 	"time"
 
-	crypto2 "event-pool/crypto"
 	pb "event-pool/internal/proto"
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
 	"event-pool/types"
 	"github.com/redis/go-redis/v9"
-	"github.com/spf13/viper"
 	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -296,28 +288,6 @@ func (m *Monitor) monitorContract(ctx context.Context, contract interface{}) {
 
 					m.ProcessLogsEvent(ctx, logs, client, eventSignature, chainID, address)
 
-					if len(logs) > 0 {
-						// add query logs as txn to the chain
-						filterLogs := types.FilterLogsParams{
-							FromBlock:       big.NewInt(int64(fromBlock)),
-							ToBlock:         big.NewInt(int64(toBlock)),
-							ContractAddress: ethereum.HexToAddress(address),
-							EventSignature:  ethereum.HexToHash(eventSignature),
-							ChainId:         int(chainID),
-						}
-						err = m.SendTx(ctx, filterLogs)
-						if err != nil {
-							m.logger.Infof("ERROR: Failed to send transaction: %v", err)
-						}
-						// mark it as processed
-						if m.rdb != nil {
-							err = m.rdb.Set(ctx, fmt.Sprintf("processed_filter_logs_%s", filterLogs.ComputeHash()), "1", 10*time.Minute).Err()
-							if err != nil {
-								m.logger.Infof("ERROR: Failed to set processed logs: %v", err)
-							}
-						}
-					}
-
 					// Update the last processed block after processing each batch
 					m.mu.Lock()
 					m.lastBlocks[int(chainID)] = toBlock
@@ -547,81 +517,6 @@ func (m *Monitor) checkForNewContracts(ctx context.Context) {
 			}
 		}
 	}
-}
-
-func (m *Monitor) SendTx(ctx context.Context, filter types.FilterLogsParams) error {
-	filter.ComputeHash()
-	input, err := json.Marshal(filter)
-	if err != nil {
-		return err
-	}
-
-	// placeholder to address
-	addr := types.StringToAddress("0x01857E2BCFcb8B4eF76Df6590F8dCd3bf736C9E9")
-	tx := &types.Transaction{
-		Nonce:    0,
-		GasPrice: big.NewInt(1000000000),
-		Gas:      21000,
-		To:       &addr,
-		Value:    big.NewInt(1000000000000000000),
-		Input:    input,
-	}
-
-	secretBytes, err := os.ReadFile(filepath.Join(viper.GetString("data_dir"), "consensus/validator.key"))
-	if err != nil {
-		return err
-	}
-	priv, err := crypto2.BytesToECDSAPrivateKey(secretBytes)
-	if err != nil {
-		return err
-	}
-
-	rawBytes, err := ethereum.SignTransaction(tx, priv)
-	if err != nil {
-		return err
-	}
-
-	dataBytes := fmt.Sprintf("0x%x", rawBytes)
-	bodyData := map[string]string{
-		"data": dataBytes,
-		"from": "",
-	}
-	payload, err := json.Marshal(bodyData)
-	if err != nil {
-		return err
-	}
-
-	// send post request to the server
-	resp, err := http.Post(
-		fmt.Sprintf("http://%s%s/txpool/add",
-			viper.GetString("JSONRPC_HOST"),
-			viper.GetString("jsonrpc_addr")),
-		"application/json",
-		bytes.NewBuffer(payload),
-	)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("failed to send transaction: %s", resp.Status)
-	}
-
-	// read response body
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return err
-	}
-	// parse response body
-	var response map[string]interface{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return err
-	}
-
-	m.logger.Infof("Transaction ID: %s", response["txHash"])
-
-	return nil
 }
 
 // GetLastSyncedBlock returns the last synced block for a given chain ID

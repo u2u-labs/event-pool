@@ -1,4 +1,4 @@
-# Event Pool
+# Event Pool (WIP)
 
 Event Pool is a service that listens to specific smart contract events on supported L1 chains, stores them, and pushes them to subscribing clients in real-time.
 

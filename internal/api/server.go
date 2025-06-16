@@ -188,8 +188,6 @@ func (s *Server) Start() error {
 	})
 
 	httpMux.HandleFunc("/api/v1/token", s.grpcServer.RequestTokenHandler)
-	httpMux.HandleFunc("/api/v1/ws", s.grpcServer.HandleWs)
-	httpMux.HandleFunc("/api/v1/disconnect", s.grpcServer.DisconnectWs)
 	httpMux.HandleFunc("/api/v1/status/{chainId}/{address}/{eventName}", s.grpcServer.GetContractStatus).Methods("GET")
 	httpMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
