@@ -104,8 +104,15 @@ func (s *Server) GetContractStatus(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	key := strings.ToLower(fmt.Sprintf("backfill_status:%s/%s/%s", chainId, address, contractInfo.EventSignature))
-	data, ok := s.metrics.Load(key)
+	lastBlock, err := s.GetMonitorLastBlock(int(chainIdNumber))
+	if err != nil {
+		http.Error(w, "Chain not supported", http.StatusBadRequest)
+		return
+	}
+	currentBlockNumber := lastBlock
+
+	currentIndexedBackfillNumberKey := strings.ToLower(fmt.Sprintf("backfill_status:%s/%s/%s", chainId, address, contractInfo.EventSignature))
+	data, ok := s.metrics.Load(currentIndexedBackfillNumberKey)
 	if ok {
 		currentBlock, ok := data.(*big.Int)
 		if !ok {
@@ -114,21 +121,7 @@ func (s *Server) GetContractStatus(w http.ResponseWriter, req *http.Request) {
 			return
 		}
 
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]any{
-			"chainId":            chainId,
-			"contractAddress":    address,
-			"eventName":          eventName,
-			"currentBlockNumber": currentBlock,
-		})
-		return
-	}
-
-	lastBlock, err := s.GetMonitorLastBlock(int(chainIdNumber))
-	if err != nil {
-		http.Error(w, "Chain not supported", http.StatusBadRequest)
-		return
+		currentBlockNumber = currentBlock.Uint64()
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -137,6 +130,7 @@ func (s *Server) GetContractStatus(w http.ResponseWriter, req *http.Request) {
 		"chainId":            chainId,
 		"contractAddress":    address,
 		"eventName":          eventName,
-		"currentBlockNumber": lastBlock,
+		"currentBlockNumber": currentBlockNumber,
+		"lastBlockNumber":    lastBlock,
 	})
 }

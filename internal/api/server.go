@@ -111,12 +111,15 @@ func (s *Server) Start() error {
 	httpMux.Use(s.loggingMiddleware)
 	httpMux.Use(allowCORS)
 
+	secretRoutes := httpMux.NewRoute().Subrouter()
+	secretRoutes.Use(secretMiddleware(s.config.SecretKey))
+
 	authRoutes := httpMux.NewRoute().Subrouter()
 	authRoutes.Use(authMiddleware(s.config.JwtSecret))
 	authRoutes.Use(s.successBasedRateLimitMiddleware(100000, time.Hour)) // 100000 requests per hour
 
 	// Set up routes
-	httpMux.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
+	secretRoutes.HandleFunc("/api/v1/contracts", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			contractHandler.RegisterContract(w, r)
@@ -260,6 +263,23 @@ func authMiddleware(jwtSecret string) func(http.Handler) http.Handler {
 
 			ctx := context.WithValue(r.Context(), "address", strings.ToLower(claims.Address))
 			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+func secretMiddleware(secret string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if authHeader == "" {
+				http.Error(w, "Authorization header required", http.StatusUnauthorized)
+				return
+			}
+			if authHeader != secret {
+				http.Error(w, "Invalid secret", http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }
