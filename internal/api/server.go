@@ -275,6 +275,9 @@ func secretMiddleware(secret string) func(http.Handler) http.Handler {
 				http.Error(w, "Authorization header required", http.StatusUnauthorized)
 				return
 			}
+			if strings.HasPrefix(authHeader, "Bearer ") {
+				authHeader = strings.TrimPrefix(authHeader, "Bearer ")
+			}
 			if authHeader != secret {
 				http.Error(w, "Invalid secret", http.StatusUnauthorized)
 				return

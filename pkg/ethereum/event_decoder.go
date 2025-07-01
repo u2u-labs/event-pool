@@ -110,7 +110,6 @@ func (d *EventDecoder) DecodeEvent(eventSignature string, data []byte, topics []
 
 			// Decode the topic based on the parameter type
 			var value interface{}
-			var err error
 
 			switch param.Type.T {
 			case abi.AddressTy:
@@ -122,11 +121,6 @@ func (d *EventDecoder) DecodeEvent(eventSignature string, data []byte, topics []
 			default:
 				// For other types, just use the hex string
 				value = topic.Hex()
-			}
-
-			if err != nil {
-				log.Printf("Error decoding topic %d: %v", i, err)
-				continue
 			}
 
 			// Add the decoded value to the map
@@ -142,4 +136,72 @@ func (d *EventDecoder) DecodeEvent(eventSignature string, data []byte, topics []
 	}
 
 	return string(jsonData), nil
+}
+
+// DecodeEventToMap decodes an event log into a map[string]any
+func (d *EventDecoder) DecodeEventToMap(eventSignature string, data []byte, topics []common.Hash) (map[string]any, error) {
+	event, ok := d.eventABIs[eventSignature]
+	if !ok {
+		return map[string]any{
+			"raw": common.Bytes2Hex(data),
+		}, nil
+	}
+
+	decodedData := make(map[string]any)
+	if len(data) > 0 {
+		unpacked := make(map[string]interface{})
+
+		err := event.Inputs.UnpackIntoMap(unpacked, data)
+		if err != nil {
+			log.Printf("Error unpacking event data: %v", err)
+			return map[string]any{
+				"raw":   common.Bytes2Hex(data),
+				"error": err.Error(),
+			}, nil
+		}
+
+		for name, value := range unpacked {
+			if bigInt, ok := value.(*big.Int); ok {
+				decodedData[name] = bigInt.String()
+			} else if addr, ok := value.(common.Address); ok {
+				decodedData[name] = addr.Hex()
+			} else {
+				decodedData[name] = value
+			}
+		}
+	}
+
+	if len(topics) > 1 {
+		indexedParams := make([]abi.Argument, 0)
+		for _, input := range event.Inputs {
+			if input.Indexed {
+				indexedParams = append(indexedParams, input)
+			}
+		}
+
+		for i, param := range indexedParams {
+			if i+1 >= len(topics) {
+				break
+			}
+
+			topic := topics[i+1]
+
+			var value interface{}
+
+			switch param.Type.T {
+			case abi.AddressTy:
+				value = common.BytesToAddress(topic.Bytes())
+			case abi.BoolTy:
+				value = topic.Big().Cmp(big.NewInt(0)) != 0
+			case abi.IntTy, abi.UintTy:
+				value = topic.Big().String()
+			default:
+				value = topic.Hex()
+			}
+
+			decodedData[param.Name] = value
+		}
+	}
+
+	return decodedData, nil
 }

@@ -7,7 +7,10 @@ import (
 	"strings"
 	"sync"
 
+	"event-pool/pkg/eventproducer"
 	"event-pool/prisma/db"
+	types2 "event-pool/types"
+	"github.com/ethereum/go-ethereum/core/types"
 	"go.uber.org/zap"
 
 	"github.com/ethereum/go-ethereum"
@@ -23,9 +26,10 @@ type Client struct {
 	db        *db.PrismaClient
 	decoder   *EventDecoder
 	logger    *zap.SugaredLogger
+	producer  eventproducer.EventProducer
 }
 
-func NewClient(rpcURL string, chainID, blockTime int, db *db.PrismaClient, logger *zap.SugaredLogger) (*Client, error) {
+func NewClient(rpcURL string, chainID, blockTime int, db *db.PrismaClient, logger *zap.SugaredLogger, producer eventproducer.EventProducer) (*Client, error) {
 	client, err := ethclient.Dial(rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Ethereum node: %w", err)
@@ -38,6 +42,7 @@ func NewClient(rpcURL string, chainID, blockTime int, db *db.PrismaClient, logge
 		db:        db,
 		decoder:   NewEventDecoder(),
 		logger:    logger,
+		producer:  producer,
 	}, nil
 }
 
@@ -71,64 +76,101 @@ func (c *Client) FilterLogs(ctx context.Context, contractAddress common.Address,
 	}
 
 	c.logger.Infof("Found %d logs for contract %s", len(logs), contractAddress.Hex())
+
+	timestampCache := make(map[uint64]uint64)
 	for i, eventLog := range logs {
 		c.logger.Infof("Log %d: Block=%d, TxHash=%s, Index=%d, Topics=%v, Data=%s",
 			i, eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index, eventLog.Topics, common.Bytes2Hex(eventLog.Data))
 
-		// Get the contract from the database
-		contract, err := c.db.Contract.FindUnique(
-			db.Contract.ChainIDAddressEventSignature(
-				db.Contract.ChainID.Equals(chainID),
-				db.Contract.Address.Equals(strings.ToLower(contractAddress.Hex())),
-				db.Contract.EventSignature.Equals(eventSignature.Hex()),
-			),
-		).Exec(ctx)
-
-		if err != nil {
-			c.logger.Infof("Error finding contract: %v", err)
+		if err := c.processEventLog(ctx, eventLog, contractAddress, eventSignature, chainID, timestampCache); err != nil {
+			c.logger.Infof("Error processing event log %d: %v", i, err)
 			continue
-		}
-
-		// Check if this event log already exists to avoid duplicates
-		existingLog, err := c.db.EventLog.FindFirst(
-			db.EventLog.ContractID.Equals(contract.ID),
-			db.EventLog.BlockNumber.Equals(int(eventLog.BlockNumber)),
-			db.EventLog.TxHash.Equals(strings.ToLower(eventLog.TxHash.Hex())),
-			db.EventLog.LogIndex.Equals(int(eventLog.Index)),
-		).Exec(ctx)
-
-		if err == nil && existingLog != nil {
-			c.logger.Infof("Event log already exists, skipping: Block=%d, TxHash=%s, Index=%d",
-				eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index)
-			continue
-		}
-
-		// Decode the event data into human-readable JSON
-		decodedData, err := c.decoder.DecodeEvent(eventSignature.Hex(), eventLog.Data, eventLog.Topics)
-		if err != nil {
-			c.logger.Infof("Error decoding event data: %v", err)
-			// Fall back to hex data if decoding fails
-			decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
-		}
-
-		c.logger.Infof("Decoded event data: %s", decodedData)
-
-		_, err = c.db.EventLog.CreateOne(
-			db.EventLog.Contract.Link(
-				db.Contract.ID.Equals(contract.ID),
-			),
-			db.EventLog.BlockNumber.Set(int(eventLog.BlockNumber)),
-			db.EventLog.TxHash.Set(strings.ToLower(eventLog.TxHash.Hex())),
-			db.EventLog.LogIndex.Set(int(eventLog.Index)),
-			db.EventLog.Data.Set(decodedData),
-		).Exec(ctx)
-
-		if err != nil {
-			c.logger.Infof("Error creating event log: %v", err)
 		}
 	}
 
 	return logs, nil
+}
+
+func (c *Client) processEventLog(ctx context.Context, eventLog types.Log, contractAddress common.Address, eventSignature common.Hash, chainID int, timestampCache map[uint64]uint64) error {
+	contract, err := c.db.Contract.FindUnique(
+		db.Contract.ChainIDAddressEventSignature(
+			db.Contract.ChainID.Equals(chainID),
+			db.Contract.Address.Equals(strings.ToLower(contractAddress.Hex())),
+			db.Contract.EventSignature.Equals(eventSignature.Hex()),
+		),
+	).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error finding contract: %w", err)
+	}
+
+	// Check if this event log already exists to avoid duplicates
+	existingLog, err := c.db.EventLog.FindFirst(
+		db.EventLog.ContractID.Equals(contract.ID),
+		db.EventLog.BlockNumber.Equals(int(eventLog.BlockNumber)),
+		db.EventLog.TxHash.Equals(strings.ToLower(eventLog.TxHash.Hex())),
+		db.EventLog.LogIndex.Equals(int(eventLog.Index)),
+	).Exec(ctx)
+
+	if err == nil && existingLog != nil {
+		c.logger.Infof("Event log already exists, skipping: Block=%d, TxHash=%s, Index=%d",
+			eventLog.BlockNumber, eventLog.TxHash.Hex(), eventLog.Index)
+		return nil
+	}
+
+	// Decode the event data into human-readable JSON
+	decodedData, err := c.decoder.DecodeEvent(eventSignature.Hex(), eventLog.Data, eventLog.Topics)
+	if err != nil {
+		c.logger.Infof("Error decoding event data: %v", err)
+		// Fall back to hex data if decoding fails
+		decodedData = fmt.Sprintf("{\"raw\": \"%s\"}", common.Bytes2Hex(eventLog.Data))
+	}
+
+	c.logger.Infof("Decoded event data: %s", decodedData)
+
+	params, err := c.decoder.DecodeEventToMap(eventSignature.Hex(), eventLog.Data, eventLog.Topics)
+	if err != nil {
+		c.logger.Errorf("Error decoding event: %v", err)
+	} else {
+		ts, ok := timestampCache[eventLog.BlockNumber]
+		if !ok {
+			block, err := c.client.BlockByNumber(ctx, big.NewInt(int64(eventLog.BlockNumber)))
+			if err != nil {
+				return fmt.Errorf("failed to get block: %w", err)
+			}
+			ts = block.Time()
+			timestampCache[eventLog.BlockNumber] = ts
+		}
+
+		pl := types2.EventRunnerPayload{
+			Params:          params,
+			TransactionHash: eventLog.TxHash.Hex(),
+			Timestamp:       ts,
+			BlockNumber:     eventLog.BlockNumber,
+			BlockHash:       eventLog.BlockHash.Hex(),
+			ContractAddress: contractAddress.Hex(),
+			EventName:       eventLog.Topics[0].Hex(),
+			EventSignature:  eventSignature.Hex(),
+			EventData:       eventLog.Data,
+			EventLogIndex:   eventLog.Index,
+			ChainID:         chainID,
+		}
+		c.producer.Publish(pl)
+	}
+
+	_, err = c.db.EventLog.CreateOne(
+		db.EventLog.Contract.Link(
+			db.Contract.ID.Equals(contract.ID),
+		),
+		db.EventLog.BlockNumber.Set(int(eventLog.BlockNumber)),
+		db.EventLog.TxHash.Set(strings.ToLower(eventLog.TxHash.Hex())),
+		db.EventLog.LogIndex.Set(int(eventLog.Index)),
+		db.EventLog.Data.Set(decodedData),
+	).Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("error creating event log: %w", err)
+	}
+
+	return nil
 }
 
 func (c *Client) SubscribeToLogs(ctx context.Context, contractAddress common.Address, eventSignature common.Hash) (<-chan Log, error) {

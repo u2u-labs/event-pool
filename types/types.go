@@ -4,14 +4,12 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
-	"github.com/umbracle/fastrlp"
 	"math/big"
 	"strings"
 	"unicode"
 
 	"event-pool/helper/hex"
 	"event-pool/helper/keccak"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 var ZeroAddress = Address{}
@@ -213,28 +211,16 @@ var (
 	EmptyUncleHash = StringToHash("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347")
 )
 
-// filter logs params
-type FilterLogsParams struct {
-	FromBlock       *big.Int
-	ToBlock         *big.Int
-	ContractAddress common.Address
-	EventSignature  common.Hash
-	ChainId         int
-	Hash            common.Hash
-}
-
-func (f *FilterLogsParams) ComputeHash() common.Hash {
-	arena := fastrlp.DefaultArenaPool.Get()
-	defer fastrlp.DefaultArenaPool.Put(arena)
-
-	vv := arena.NewArray()
-	vv.Set(arena.NewBigInt(f.FromBlock))
-	vv.Set(arena.NewBigInt(f.ToBlock))
-	vv.Set(arena.NewBytes(f.ContractAddress[:]))
-	vv.Set(arena.NewBytes(f.EventSignature[:]))
-	vv.Set(arena.NewUint(uint64(f.ChainId)))
-
-	buf := keccak.Keccak256Rlp(nil, vv)
-	f.Hash = common.BytesToHash(buf)
-	return f.Hash
+type EventRunnerPayload struct {
+	Params          map[string]any `json:"params"`
+	TransactionHash string         `json:"transactionHash"`
+	Timestamp       uint64         `json:"timestamp"`
+	BlockNumber     uint64         `json:"blockNumber"`
+	BlockHash       string         `json:"blockHash"`
+	ContractAddress string         `json:"contractAddress"`
+	EventName       string         `json:"eventName"`
+	EventSignature  string         `json:"eventSignature"`
+	EventData       []byte         `json:"eventData"`
+	EventLogIndex   uint           `json:"eventLogIndex"`
+	ChainID         int            `json:"chainId"`
 }
