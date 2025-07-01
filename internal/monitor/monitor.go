@@ -13,7 +13,6 @@ import (
 	"event-pool/pkg/ethereum"
 	"event-pool/pkg/grpc"
 	"event-pool/prisma/db"
-	"event-pool/types"
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 
@@ -320,7 +319,7 @@ func (m *Monitor) ProcessLogsEvent(ctx context.Context, logs []ethereum.Log, cli
 	}
 }
 
-func (m *Monitor) processEvent(ctx context.Context, chainID int, address string, eventSignature string, eventLog ethereum.Log, decodedData interface{}) error {
+func (m *Monitor) processEvent(ctx context.Context, chainID int, address string, eventSignature string, eventLog ethereum.Log, decodedData string) error {
 	// Store event in database
 	contract, err := m.db.Contract.FindFirst(
 		db.Contract.ChainID.Equals(chainID),
@@ -341,7 +340,7 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 	event := &pb.Event{
 		BlockNumber: int64(eventLog.BlockNumber),
 		TxHash:      eventLog.TxHash.Hex(),
-		Data:        decodedData.(string),
+		Data:        decodedData,
 	}
 
 	// Broadcast event via gRPC
@@ -357,20 +356,6 @@ func (m *Monitor) processEvent(ctx context.Context, chainID int, address string,
 	}
 
 	return nil
-}
-
-func (m *Monitor) ShouldProcessFilterLogs(filterLogs types.FilterLogsParams) bool {
-	// Check if the filter logs have already been processed
-	if m.rdb != nil {
-		processed, err := m.rdb.Get(context.Background(), fmt.Sprintf("processed_filter_logs_%s", filterLogs.ComputeHash())).Result()
-		if err != nil {
-			m.logger.Infof("ERROR: Failed to get processed logs: %v", err)
-		}
-		if processed == "1" {
-			return false
-		}
-	}
-	return true
 }
 
 func (m *Monitor) IsRunning() bool {

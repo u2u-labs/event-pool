@@ -16,6 +16,7 @@ import (
 	"event-pool/internal/monitor"
 	"event-pool/internal/worker"
 	"event-pool/pkg/ethereum"
+	"event-pool/pkg/eventproducer"
 	"event-pool/pkg/grpc"
 	db2 "event-pool/prisma/db"
 	"github.com/redis/go-redis/v9"
@@ -46,7 +47,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	logger := zLogger.Sugar()
 
 	// Initialize redis
-	client := redis.NewClient(&redis.Options{
+	rdbClient := redis.NewClient(&redis.Options{
 		Addr:     cfg.Redis.Addr,
 		Password: cfg.Redis.Password,
 		DB:       cfg.Redis.DB,
@@ -56,7 +57,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	defer cancel()
 
 	// Test connection
-	if _, err = client.Ping(ctx).Result(); err != nil {
+	if _, err = rdbClient.Ping(ctx).Result(); err != nil {
 		return err
 	}
 
@@ -73,25 +74,28 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}
 	defer db.Close(dbClient)
 
+	eventListener := eventproducer.NewRunnerEventProducer(rdbClient, logger.Named("event-producer"))
+	eventListener.Start()
+
 	// Initialize Ethereum clients
 	ethClients := make(map[int]*ethereum.Client)
 	for chainID, chainConfig := range cfg.Ethereum.Chains {
-		client, err := ethereum.NewClient(chainConfig.RPCURL, chainID, chainConfig.BlockTime, dbClient, logger.Named("rpc"))
+		ethClient, err := ethereum.NewClient(chainConfig.RPCURL, chainID, chainConfig.BlockTime, dbClient, logger.Named("rpc"), eventListener)
 		if err != nil {
-			return fmt.Errorf("failed to initialize Ethereum client for chain %d: %w", chainID, err)
+			return fmt.Errorf("failed to initialize Ethereum ethClient for chain %d: %w", chainID, err)
 		}
-		ethClients[chainID] = client
+		ethClients[chainID] = ethClient
 	}
 
 	// Initialize gRPC server
-	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, strings.TrimSpace(string(jwtSecret)), cfg.SessionContract, cfg.NodeContract, ethClients[cfg.ChainId], client, logger.Named("server"))
+	grpcServer := grpc.NewServer(dbClient, cfg.SecretKey, strings.TrimSpace(string(jwtSecret)), cfg.SessionContract, cfg.NodeContract, ethClients[cfg.ChainId], rdbClient, logger.Named("server"))
 
 	// Initialize monitor
-	mon := monitor.NewMonitor(ethClients, dbClient, client, grpcServer, logger.Named("monitor"))
+	mon := monitor.NewMonitor(ethClients, dbClient, rdbClient, grpcServer, logger.Named("monitor"))
 	grpcServer.GetMonitorLastBlock = mon.GetLastSyncedBlock
 
 	// Initialize worker
-	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, client, mon, grpcServer.GetMetrics(), logger.Named("worker"))
+	worker := worker.NewWorker(cfg.Asynq.RedisAddr, ethClients, dbClient, rdbClient, mon, grpcServer.GetMetrics(), logger.Named("worker"))
 	go func() {
 		if err := worker.Start(); err != nil {
 			log.Printf("Worker error: %v", err)
@@ -99,7 +103,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	}()
 
 	// Initialize API server
-	server := api.NewServer(cfg, dbClient, client, worker, ethClients, grpcServer, mon, logger.Named("api"))
+	server := api.NewServer(cfg, dbClient, rdbClient, worker, ethClients, grpcServer, mon, logger.Named("api"))
 	go func() {
 		if err := server.Start(); err != nil {
 			log.Printf("Server error: %v", err)
@@ -114,6 +118,7 @@ func RunServe(cmd *cobra.Command, args []string) error {
 	logger.Infoln("Shutting down...")
 
 	// Graceful shutdown
+	eventListener.Stop()
 	server.Stop()
 	return nil
 }
