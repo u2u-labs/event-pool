@@ -40,8 +40,13 @@ func (d *EventDecoder) RegisterEvent(eventSignature string, eventABI string) err
 	// Get the first event from the map
 	var event abi.Event
 	for _, e := range parsedABI.Events {
-		event = e
-		break
+		if eventSignature == e.ID.String() {
+			event = e
+			break
+		}
+	}
+	if event.Name == "" {
+		return fmt.Errorf("event not found in ABI")
 	}
 
 	// Store the event ABI

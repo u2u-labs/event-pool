@@ -39,7 +39,7 @@ func (p *RunnerEventProducer) Start() {
 }
 
 func (p *RunnerEventProducer) handle(evt types.EventRunnerPayload) {
-	channelKey := strings.ToLower(fmt.Sprintf("event_log_%d_%s_%s", evt.ChainID, evt.ContractAddress, evt.EventSignature))
+	channelKey := strings.ToLower(fmt.Sprintf("event_log_%d_%s_%s", evt.ChainID, evt.ContractAddress, evt.EventName))
 	data, err := json.Marshal(evt)
 	if err != nil {
 		p.logger.Errorw("error marshaling event", "err", err)
